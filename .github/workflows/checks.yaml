@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.13", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@v6
 
@@ -24,7 +24,7 @@ jobs:
         run: uv sync --extra tests
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest -m ci_ok
 
   lint:
     name: lint
@@ -56,5 +56,3 @@ jobs:
       - uses: j178/prek-action@v1
         with:
           extra_args: '--all-files --skip "ruff-format" --skip "ruff-check"'
-
-

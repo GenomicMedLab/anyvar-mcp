@@ -1,9 +1,9 @@
 """MCP Server for AnyVar"""
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
-    __version__ = version("anyvar_mcp_server")
+    __version__ = version("anyvar_mcp")
 except PackageNotFoundError:
     __version__ = "unknown"
 finally:

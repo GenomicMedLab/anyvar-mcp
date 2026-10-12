@@ -1,7 +1,4 @@
-
-from pathlib import Path
-
-import pytest
+"""Configuration and shared fixtures for test suite."""
 
 
 def pytest_addoption(parser):
@@ -22,13 +19,3 @@ def pytest_configure(config):
     # add noisy logging libraries.
     if not config.getoption("--verbose-logs"):
         pass
-        # for example:
-        # logging.getLogger("botocore").setLevel(logging.ERROR)
-        # logging.getLogger("boto3").setLevel(logging.ERROR)
-        # logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
-
-
-@pytest.fixture(scope="session")
-def test_data_dir() -> Path:
-    """Provide Path instance pointing to test data directory"""
-    return Path(__file__).parent / "data"
