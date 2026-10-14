@@ -16,16 +16,22 @@ requires-python = ">=3.13"
 description = "MCP Server for AnyVar"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-dependencies = ["fastmcp>=4,<5"]
+dependencies = [
+  "fastmcp>=4,<5",
+  "pydantic>=2,<3",
+  "pydantic-settings>=2,<3",
+  "requests>=2,<3",
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 tests = ["pytest", "pytest-cov"]
 dev = ["prek>=0.2.23", "ruff==0.14.10"]
+docs = ["zensical==0.0.69"]
 
 [project.urls]
 Homepage = "https://github.com/genomicmedlab/anyvar-mcp"
-Documentation = "https://github.com/genomicmedlab/anyvar-mcp"
+Documentation = "https://genomicmedlab.github.io/anyvar-mcp/"
 Changelog = "https://github.com/genomicmedlab/anyvar-mcp/releases"
 Source = "https://github.com/genomicmedlab/anyvar-mcp"
 "Bug Tracker" = "https://github.com/genomicmedlab/anyvar-mcp/issues"
@@ -45,7 +51,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report term-missing"
 testpaths = ["tests"]
-markers = ["ci_ok: tests safe to run in CI"]
+markers = ["live: tests requiring a running AnyVar service or external resources"]
 
 [tool.coverage.run]
 branch = true
