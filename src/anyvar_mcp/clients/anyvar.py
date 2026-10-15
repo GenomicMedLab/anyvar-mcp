@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 from http import HTTPMethod
 from types import MappingProxyType
+from typing import NamedTuple
 from urllib.parse import quote, urlencode, urlsplit
 
 import requests
@@ -80,10 +81,10 @@ ENDPOINT_TO_OPERATION = MappingProxyType(
 )
 
 
-type JSONObject = dict[str, object]
 type JSONValue = (
     str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
 )
+type JSONObject = dict[str, JSONValue]
 
 
 def _is_nonempty_string(value: object, error_message: str) -> None:
@@ -169,6 +170,15 @@ class AnyVarAPIError(Exception):
         self.status_code = status_code
 
 
+class _ClientConfig(NamedTuple):
+    """Resolved service connection settings and client resource limits."""
+
+    base_url: str
+    timeout: float
+    max_search_span: int
+    max_response_bytes: int
+
+
 class AnyVarClient:
     """Make requests to an AnyVar HTTP service."""
 
@@ -180,28 +190,86 @@ class AnyVarClient:
         max_search_span: int | None = None,
         max_response_bytes: int | None = None,
     ) -> None:
-        """Configure the service URL and request timeout.
+        """Configure the service URL, request timeout, and resource limits.
 
         :param base_url: HTTP or HTTPS AnyVar service URL, optionally with a path prefix.
         :param timeout: Positive, finite connect and read timeout in seconds.
         :param max_search_span: Maximum inclusive search interval width.
         :param max_response_bytes: Maximum upstream response body size in bytes.
-        :raise ValueError: If the URL or timeout is invalid.
+        :raises ValueError: If the URL, timeout, or resource limits are invalid.
+        :raises ValidationError: If settings loaded for omitted arguments are invalid.
         """
-        if any(
-            value is None
-            for value in (base_url, timeout, max_search_span, max_response_bytes)
-        ):
-            settings = Settings()
-            if base_url is None:
-                base_url = settings.anyvar_api_url
-            if timeout is None:
-                timeout = settings.anyvar_api_timeout
-            if max_search_span is None:
-                max_search_span = settings.anyvar_max_search_span
-            if max_response_bytes is None:
-                max_response_bytes = settings.anyvar_max_response_bytes
+        config = self._resolve_config(
+            base_url, timeout, max_search_span, max_response_bytes
+        )
+        self._validate_config(
+            base_url=config.base_url,
+            timeout=config.timeout,
+            max_search_span=config.max_search_span,
+            max_response_bytes=config.max_response_bytes,
+        )
 
+        self.base_url = config.base_url.rstrip("/")
+        self.timeout = config.timeout
+        self.max_search_span = config.max_search_span
+        self.max_response_bytes = config.max_response_bytes
+
+    @staticmethod
+    def _resolve_config(
+        base_url: str | None,
+        timeout: float | None,
+        max_search_span: int | None,
+        max_response_bytes: int | None,
+    ) -> _ClientConfig:
+        """Fill omitted arguments from environment and .env settings.
+
+        :param base_url: Explicit service URL, or None to use settings.
+        :param timeout: Explicit request timeout, or None to use settings.
+        :param max_search_span: Explicit search span limit, or None to use settings.
+        :param max_response_bytes: Explicit response byte limit, or None to use settings.
+        :return: Resolved configuration with named connection and resource fields.
+        :raises ValidationError: If settings loaded for omitted arguments are invalid.
+        """
+        if (
+            base_url is not None
+            and timeout is not None
+            and max_search_span is not None
+            and max_response_bytes is not None
+        ):
+            return _ClientConfig(
+                base_url=base_url,
+                timeout=timeout,
+                max_search_span=max_search_span,
+                max_response_bytes=max_response_bytes,
+            )
+
+        settings = Settings()
+        return _ClientConfig(
+            base_url=settings.anyvar_api_url if base_url is None else base_url,
+            timeout=settings.anyvar_api_timeout if timeout is None else timeout,
+            max_search_span=settings.anyvar_max_search_span
+            if max_search_span is None
+            else max_search_span,
+            max_response_bytes=settings.anyvar_max_response_bytes
+            if max_response_bytes is None
+            else max_response_bytes,
+        )
+
+    @staticmethod
+    def _validate_config(
+        base_url: str,
+        timeout: float,
+        max_search_span: int,
+        max_response_bytes: int,
+    ) -> None:
+        """Validate the service URL, timeout, and resource limits.
+
+        :param base_url: HTTP or HTTPS service URL without credentials or query.
+        :param timeout: Positive, finite request timeout in seconds.
+        :param max_search_span: Positive integer search span limit.
+        :param max_response_bytes: Positive integer response byte limit.
+        :raises ValueError: If the URL, timeout, or resource limits are invalid.
+        """
         url_error_message = (
             "AnyVar API URL must be HTTP(S) without credentials, query, or fragment."
         )
@@ -223,17 +291,14 @@ class AnyVarClient:
         if not math.isfinite(timeout) or timeout <= 0:
             error_message = "AnyVar API timeout must be positive and finite."
             raise ValueError(error_message)
+
         if type(max_search_span) is not int or max_search_span <= 0:
             error_message = "Maximum search span must be a positive integer."
             raise ValueError(error_message)
+
         if type(max_response_bytes) is not int or max_response_bytes <= 0:
             error_message = "Maximum response bytes must be a positive integer."
             raise ValueError(error_message)
-
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.max_search_span = max_search_span
-        self.max_response_bytes = max_response_bytes
 
     def _request_json[ResponseT: AnyVarResponse](
         self,
@@ -267,6 +332,36 @@ class AnyVarClient:
         if query_parameters:
             path = f"{path}?{urlencode(query_parameters)}"
 
+        payload = self._fetch_json(path, operation, http_method, json_body)
+
+        if not isinstance(payload, dict):
+            error_message = (
+                f"AnyVar request {operation} response must be a JSON object."
+            )
+            raise AnyVarAPIError(error_message, operation=operation)
+
+        try:
+            return response_model.model_validate(payload)
+        except ValidationError:
+            error_message = f"AnyVar request {operation} response does not match the expected schema."
+            raise AnyVarAPIError(error_message, operation=operation) from None
+
+    def _fetch_json(
+        self,
+        path: str,
+        operation: AnyVarOperation,
+        http_method: HTTPMethod,
+        json_body: dict[str, JSONValue] | None,
+    ) -> JSONValue:
+        """Execute a request and translate transport and JSON decoding failures.
+
+        :param path: Encoded endpoint path, including any query parameters.
+        :param operation: Client operation for error context.
+        :param http_method: HTTP request method.
+        :param json_body: Optional JSON request body.
+        :return: Decoded JSON payload.
+        :raises AnyVarAPIError: If the request fails or its response is rejected.
+        """
         try:
             with requests.request(
                 method=http_method,
@@ -277,20 +372,7 @@ class AnyVarClient:
                 stream=True,
                 allow_redirects=False,
             ) as response:
-                if response.is_redirect:
-                    error_message = f"AnyVar request {operation} was redirected."
-                    raise AnyVarAPIError(error_message, operation=operation)
-                response.raise_for_status()
-                body = bytearray()
-                for chunk in response.iter_content(RESPONSE_CHUNK_SIZE):
-                    body.extend(chunk)
-                    if len(body) > self.max_response_bytes:
-                        error_message = (
-                            f"AnyVar request {operation} response exceeds the "
-                            f"{self.max_response_bytes}-byte limit."
-                        )
-                        raise AnyVarAPIError(error_message, operation=operation)
-                payload = json.loads(body)
+                return self._read_response_json(response, operation)
         except (json.JSONDecodeError, UnicodeError):
             error_message = f"AnyVar request {operation} returned invalid JSON."
             raise AnyVarAPIError(error_message, operation=operation) from None
@@ -306,17 +388,36 @@ class AnyVarClient:
             error_message = f"Unable to complete the AnyVar request {operation}."
             raise AnyVarAPIError(error_message, operation=operation) from None
 
-        if not isinstance(payload, dict):
-            error_message = (
-                f"AnyVar request {operation} response must be a JSON object."
-            )
+    def _read_response_json(
+        self, response: requests.Response, operation: AnyVarOperation
+    ) -> JSONValue:
+        """Read a bounded response body and decode its JSON payload.
+
+        :param response: Open HTTP response to check and read.
+        :param operation: Client operation for error context.
+        :return: Decoded JSON payload.
+        :raises AnyVarAPIError: If redirected or the response exceeds the byte limit.
+        :raises requests.HTTPError: If the response has an unsuccessful status.
+        :raises requests.RequestException: If reading the response fails.
+        :raises json.JSONDecodeError: If the body is not valid JSON.
+        :raises UnicodeError: If the body cannot be decoded as Unicode.
+        """
+        if response.is_redirect:
+            error_message = f"AnyVar request {operation} was redirected."
             raise AnyVarAPIError(error_message, operation=operation)
 
-        try:
-            return response_model.model_validate(payload)
-        except ValidationError:
-            error_message = f"AnyVar request {operation} response does not match the expected schema."
-            raise AnyVarAPIError(error_message, operation=operation) from None
+        response.raise_for_status()
+        body = bytearray()
+        for chunk in response.iter_content(RESPONSE_CHUNK_SIZE):
+            body.extend(chunk)
+            if len(body) > self.max_response_bytes:
+                error_message = (
+                    f"AnyVar request {operation} response exceeds the "
+                    f"{self.max_response_bytes}-byte limit."
+                )
+                raise AnyVarAPIError(error_message, operation=operation)
+
+        return json.loads(body)
 
     @staticmethod
     def _build_object_path(endpoint: AnyVarEndpoint, vrs_id: str | None) -> str:
@@ -429,6 +530,7 @@ class AnyVarClient:
             expected schema.
         """
         _is_nonempty_string(accession, "A nonempty sequence accession is required.")
+
         # AnyVar resolves accessions upstream. This MCP policy requires callers
         # to specify an assembly for bare chromosome names before searching.
         if re.fullmatch(
