@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from anyvar_mcp.config import Settings
 
-ANYVAR_SEARCH_PAGE_SIZE = 1000
 RESPONSE_CHUNK_SIZE = 65_536  # 64 KiB
 
 
@@ -393,7 +392,7 @@ class AnyVarClient:
         accession: str,
         start: int,
         end: int,
-        page_size: int = ANYVAR_SEARCH_PAGE_SIZE,
+        page_size: int | None = None,
         cursor: str | None = None,
     ) -> SearchResponse:
         """Fetch one page of variants overlapping a closed reference interval.
@@ -402,8 +401,9 @@ class AnyVarClient:
             recognized by AnyVar.
         :param start: Nonnegative, inclusive inter-residue start coordinate.
         :param end: Inclusive inter-residue end coordinate, at least start.
-        :param page_size: Maximum results per page, from 1 to 10000. Keep this
-            unchanged when following cursors for the same search.
+        :param page_size: Maximum results per page, from 1 to 10000. None uses
+            the configured ANYVAR_SEARCH_PAGE_SIZE (100 by default). Keep the
+            effective page size unchanged when following cursors for the same search.
         :param cursor: Opaque ``next_cursor`` from the preceding response.
         :return: AnyVar response with ``variations`` and an optional ``next_cursor``.
         :raises ValueError: If the accession or supplied cursor is blank, the
@@ -438,7 +438,11 @@ class AnyVarClient:
             "accession": accession,
             "start": start,
             "end": end,
-            "page_size": page_size,
+            "page_size": (
+                self.settings.anyvar_search_page_size
+                if page_size is None
+                else page_size
+            ),
         }
         if cursor is not None:
             query_parameters["cursor"] = cursor

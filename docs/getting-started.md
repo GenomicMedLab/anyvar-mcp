@@ -157,8 +157,8 @@ The registered allele appears in `variations`.
 
 ## MCP server configuration
 
-The AnyVar service URL and request timeout can be configured using environment variables
-or a `.env` file.
+Set the AnyVar service URL, request timeout, and resource limits through environment
+variables or a `.env` file.
 
 Configuration values are resolved in the following order of precedence (highest to lowest):
 
@@ -168,6 +168,22 @@ Configuration values are resolved in the following order of precedence (highest 
 
       - `ANYVAR_API_URL`: `http://localhost:8000`
       - `ANYVAR_API_TIMEOUT`: `10` seconds
+      - `ANYVAR_SEARCH_PAGE_SIZE`: `100` results (allowed range: 1–10,000)
+      - `ANYVAR_MAX_SEARCH_SPAN`: `1000000` positions
+      - `ANYVAR_MAX_RESPONSE_BYTES`: `1048576` bytes (1 MiB)
+
+Searches default to at most 100 variants per page to keep results manageable in
+conversations. Set `ANYVAR_SEARCH_PAGE_SIZE` in the server's environment or `.env`
+file to change this default.
+
+The separate 1 MiB response limit allows room for larger variants
+and explicitly requested larger pages while bounding how much data the client reads.
+
+If a page exceeds the limit, lower `ANYVAR_SEARCH_PAGE_SIZE` and restart the server
+before starting a new search. Keep the page size unchanged when following
+continuation cursors.
+Operators can raise
+`ANYVAR_MAX_RESPONSE_BYTES` when larger responses are needed.
 
 To configure values using a `.env` file, create one in the directory where you launch
 the MCP server:
@@ -175,6 +191,7 @@ the MCP server:
 ```dotenv
 ANYVAR_API_URL=http://localhost:8000
 ANYVAR_API_TIMEOUT=10
+ANYVAR_SEARCH_PAGE_SIZE=100
 ```
 
 To override a value for a single invocation, set the environment variable when launching

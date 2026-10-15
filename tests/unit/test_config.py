@@ -10,18 +10,8 @@ from pydantic import ValidationError
 from anyvar_mcp import config
 from anyvar_mcp.clients.anyvar import AnyVarClient
 
-
-@pytest.fixture(autouse=True)
-def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Ignore host configuration and run outside the source tree."""
-    for key in (
-        "ANYVAR_API_URL",
-        "ANYVAR_API_TIMEOUT",
-        "ANYVAR_MAX_SEARCH_SPAN",
-        "ANYVAR_MAX_RESPONSE_BYTES",
-    ):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.chdir(tmp_path)
+# Isolate every test in this module from host environment and .env settings.
+pytestmark = pytest.mark.usefixtures("isolated_config")
 
 
 def test_defaults_without_env_file() -> None:
@@ -30,8 +20,9 @@ def test_defaults_without_env_file() -> None:
 
     assert settings.anyvar_api_url == "http://localhost:8000"
     assert settings.anyvar_api_timeout == 10.0
+    assert settings.anyvar_search_page_size == 100
     assert settings.anyvar_max_search_span == 1_000_000
-    assert settings.anyvar_max_response_bytes == 65_536
+    assert settings.anyvar_max_response_bytes == 1_048_576
 
 
 @pytest.mark.parametrize(
@@ -55,6 +46,7 @@ def test_configuration_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
         "ANYVAR_API_URL=invalid\n"
         "ANYVAR_API_TIMEOUT=invalid\n"
         "ANYVAR_MAX_SEARCH_SPAN=200\n"
+        "ANYVAR_SEARCH_PAGE_SIZE=50\n"
     )
     monkeypatch.setenv("ANYVAR_API_URL", "https://environment.example/api")
     monkeypatch.setenv("ANYVAR_API_TIMEOUT", "invalid")
@@ -65,8 +57,27 @@ def test_configuration_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.anyvar_api_url == "https://environment.example/api"
     assert settings.anyvar_api_timeout == 3.0
     assert settings.anyvar_max_search_span == 200
-    assert settings.anyvar_max_response_bytes == 65_536
+    assert settings.anyvar_search_page_size == 50
+    assert settings.anyvar_max_response_bytes == 1_048_576
     assert dict(os.environ) == original_environment
+
+
+@pytest.mark.parametrize("value", ["0", "10001", "1.5"])
+def test_invalid_search_page_size(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    """Reject configured page sizes outside AnyVar's integer range."""
+    monkeypatch.setenv("ANYVAR_SEARCH_PAGE_SIZE", value)
+
+    with pytest.raises(ValidationError):
+        config.Settings()
+
+
+def test_search_page_size_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prefer constructor values over environment values and .env defaults."""
+    Path(".env").write_text("ANYVAR_SEARCH_PAGE_SIZE=50\n")
+    monkeypatch.setenv("ANYVAR_SEARCH_PAGE_SIZE", "75")
+
+    assert config.Settings().anyvar_search_page_size == 75
+    assert config.Settings(anyvar_search_page_size=25).anyvar_search_page_size == 25
 
 
 @pytest.mark.parametrize(

@@ -13,6 +13,9 @@ import requests
 from anyvar_mcp.clients.anyvar import AnyVarAPIError, AnyVarClient, AnyVarOperation
 from anyvar_mcp.config import Settings
 
+# Isolate every test in this module from host environment and .env settings.
+pytestmark = pytest.mark.usefixtures("isolated_config")
+
 
 @pytest.fixture
 def mock_http_response() -> MagicMock:
@@ -180,7 +183,7 @@ def test_search_variants(
 
     assert mock_http_request.call_args_list[0].kwargs["url"] == (
         "https://anyvar.example/variations"
-        "?accession=NC_1%26x%3D1&start=0&end=0&page_size=1000"
+        "?accession=NC_1%26x%3D1&start=0&end=0&page_size=100"
     )
     assert result.variations == [{"id": "ga4gh:VA.example"}]
     assert result.next_cursor == "next-page"
@@ -202,6 +205,85 @@ def test_search_with_cursor(
     )
     assert result.variations == []
     assert result.next_cursor is None
+
+
+@pytest.mark.parametrize("page_size", [None, 5], ids=["configured", "explicit"])
+def test_search_uses_configured_page_size(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    page_size: int | None,
+) -> None:
+    """Use the environment default unless the caller supplies a page size."""
+    # Override the built-in default to verify that searches use configuration.
+    monkeypatch.setenv("ANYVAR_SEARCH_PAGE_SIZE", "25")
+    mock_http_response.json.return_value = {"variations": [], "next_cursor": None}
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    client.search_variants("NC_1", 0, 0, page_size=page_size, cursor="next-page")
+
+    # An explicit page size takes precedence, including when following a cursor.
+    expected_size = 25 if page_size is None else page_size
+    assert mock_http_request.call_args.kwargs["url"] == (
+        "https://anyvar.example/variations"
+        f"?accession=NC_1&start=0&end=0&page_size={expected_size}&cursor=next-page"
+    )
+
+
+@pytest.mark.parametrize("page_size", [None, 1000], ids=["default", "large-page"])
+def test_search_page_fits_default_response_limit(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    page_size: int | None,
+) -> None:
+    """Return default and larger requested pages under the default byte cap."""
+    expected_count = 100 if page_size is None else page_size
+    # Exercise streamed reads even with the smaller default page.
+    chunk_size = 4096
+    allele = {
+        "id": "ga4gh:VA.K7akyz9PHB0wg8wBNVlWAAdvMbJUJJfU",
+        "type": "Allele",
+        "digest": "K7akyz9PHB0wg8wBNVlWAAdvMbJUJJfU",
+        "location": {
+            "id": "ga4gh:SL.01EH5o6V6VEyNUq68gpeTwKE7xOo-WAy",
+            "type": "SequenceLocation",
+            "digest": "01EH5o6V6VEyNUq68gpeTwKE7xOo-WAy",
+            "sequenceReference": {
+                "type": "SequenceReference",
+                "refgetAccession": "SQ.ss8r_wB0-b9r44TQTMmVTI92884QvBiB",
+            },
+            "start": 87894076,
+            "end": 87894077,
+        },
+        "state": {"type": "LiteralSequenceExpression", "sequence": "T"},
+    }
+
+    payload = {"variations": [allele] * expected_count, "next_cursor": "next-page"}
+    body = json.dumps(payload).encode()
+
+    # Ensure the page spans multiple response chunks.
+    assert len(body) > chunk_size
+
+    # Replace the fixture's single-chunk body with a stream of chunks.
+    mock_http_response.iter_content.side_effect = None
+    mock_http_response.iter_content.return_value = (
+        body[offset : offset + chunk_size] for offset in range(0, len(body), chunk_size)
+    )
+
+    client = AnyVarClient()
+    if page_size is None:
+        result = client.search_variants("NC_000010.11", 87894070, 87894080)
+    else:
+        result = client.search_variants(
+            "NC_000010.11", 87894070, 87894080, page_size=page_size
+        )
+
+    # Preserve every result and the cursor needed to fetch the next page.
+    assert result.model_dump() == payload
+    assert mock_http_request.call_args.kwargs["url"].endswith(
+        f"&page_size={expected_count}"
+    )
+    mock_http_response.__exit__.assert_called_once()
 
 
 def test_blank_registration_definition(mock_http_request: MagicMock) -> None:

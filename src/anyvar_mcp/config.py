@@ -32,8 +32,13 @@ class Settings(BaseSettings):
     anyvar_max_search_span: int = Field(
         default=1_000_000, alias="ANYVAR_MAX_SEARCH_SPAN", gt=0
     )
+    # Default result count controls context use; the byte cap also bounds reads
+    # when individual variants contain large literal sequences.
+    anyvar_search_page_size: int = Field(
+        default=100, alias="ANYVAR_SEARCH_PAGE_SIZE", gt=0, le=10_000
+    )
     anyvar_max_response_bytes: int = Field(
-        default=65_536, alias="ANYVAR_MAX_RESPONSE_BYTES", gt=0
+        default=1_048_576, alias="ANYVAR_MAX_RESPONSE_BYTES", gt=0
     )
 
     @field_validator("anyvar_api_url")
@@ -65,7 +70,10 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "anyvar_max_search_span", "anyvar_max_response_bytes", mode="before"
+        "anyvar_max_search_span",
+        "anyvar_max_response_bytes",
+        "anyvar_search_page_size",
+        mode="before",
     )
     @classmethod
     def validate_resource_limit_type(cls, value: object) -> object:
