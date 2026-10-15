@@ -7,14 +7,12 @@ See https://github.com/GenomicMedLab/anyvar-mcp/discussions/10.
 """
 
 import json
-import math
 import re
 from collections.abc import Mapping
 from enum import StrEnum
 from http import HTTPMethod
 from types import MappingProxyType
-from typing import NamedTuple
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -170,135 +168,19 @@ class AnyVarAPIError(Exception):
         self.status_code = status_code
 
 
-class _ClientConfig(NamedTuple):
-    """Resolved service connection settings and client resource limits."""
-
-    base_url: str
-    timeout: float
-    max_search_span: int
-    max_response_bytes: int
-
-
 class AnyVarClient:
     """Make requests to an AnyVar HTTP service."""
 
-    def __init__(
-        self,
-        base_url: str | None = None,
-        timeout: float | None = None,
-        *,
-        max_search_span: int | None = None,
-        max_response_bytes: int | None = None,
-    ) -> None:
-        """Configure the service URL, request timeout, and resource limits.
+    def __init__(self, settings: Settings | None = None) -> None:
+        """Configure the client with validated settings.
 
-        :param base_url: HTTP or HTTPS AnyVar service URL, optionally with a path prefix.
-        :param timeout: Positive, finite connect and read timeout in seconds.
-        :param max_search_span: Maximum inclusive search interval width.
-        :param max_response_bytes: Maximum upstream response body size in bytes.
-        :raises ValueError: If the URL, timeout, or resource limits are invalid.
-        :raises ValidationError: If settings loaded for omitted arguments are invalid.
+        Omitted settings load environment variables, .env values, and defaults.
+        Explicit Settings field values take precedence over those sources.
+
+        :param settings: Service connection settings and resource limits.
+        :raises ValidationError: If loading omitted settings finds invalid configuration.
         """
-        config = self._resolve_config(
-            base_url, timeout, max_search_span, max_response_bytes
-        )
-        self._validate_config(
-            base_url=config.base_url,
-            timeout=config.timeout,
-            max_search_span=config.max_search_span,
-            max_response_bytes=config.max_response_bytes,
-        )
-
-        self.base_url = config.base_url.rstrip("/")
-        self.timeout = config.timeout
-        self.max_search_span = config.max_search_span
-        self.max_response_bytes = config.max_response_bytes
-
-    @staticmethod
-    def _resolve_config(
-        base_url: str | None,
-        timeout: float | None,
-        max_search_span: int | None,
-        max_response_bytes: int | None,
-    ) -> _ClientConfig:
-        """Fill omitted arguments from environment and .env settings.
-
-        :param base_url: Explicit service URL, or None to use settings.
-        :param timeout: Explicit request timeout, or None to use settings.
-        :param max_search_span: Explicit search span limit, or None to use settings.
-        :param max_response_bytes: Explicit response byte limit, or None to use settings.
-        :return: Resolved configuration with named connection and resource fields.
-        :raises ValidationError: If settings loaded for omitted arguments are invalid.
-        """
-        if (
-            base_url is not None
-            and timeout is not None
-            and max_search_span is not None
-            and max_response_bytes is not None
-        ):
-            return _ClientConfig(
-                base_url=base_url,
-                timeout=timeout,
-                max_search_span=max_search_span,
-                max_response_bytes=max_response_bytes,
-            )
-
-        settings = Settings()
-        return _ClientConfig(
-            base_url=settings.anyvar_api_url if base_url is None else base_url,
-            timeout=settings.anyvar_api_timeout if timeout is None else timeout,
-            max_search_span=settings.anyvar_max_search_span
-            if max_search_span is None
-            else max_search_span,
-            max_response_bytes=settings.anyvar_max_response_bytes
-            if max_response_bytes is None
-            else max_response_bytes,
-        )
-
-    @staticmethod
-    def _validate_config(
-        base_url: str,
-        timeout: float,
-        max_search_span: int,
-        max_response_bytes: int,
-    ) -> None:
-        """Validate the service URL, timeout, and resource limits.
-
-        :param base_url: HTTP or HTTPS service URL without credentials or query.
-        :param timeout: Positive, finite request timeout in seconds.
-        :param max_search_span: Positive integer search span limit.
-        :param max_response_bytes: Positive integer response byte limit.
-        :raises ValueError: If the URL, timeout, or resource limits are invalid.
-        """
-        url_error_message = (
-            "AnyVar API URL must be HTTP(S) without credentials, query, or fragment."
-        )
-        try:
-            parsed_url = urlsplit(base_url)
-        except ValueError:
-            raise ValueError(url_error_message) from None
-
-        if (
-            parsed_url.scheme not in {"http", "https"}
-            or not parsed_url.hostname
-            or parsed_url.query
-            or parsed_url.fragment
-            or parsed_url.username is not None
-            or parsed_url.password is not None
-        ):
-            raise ValueError(url_error_message)
-
-        if not math.isfinite(timeout) or timeout <= 0:
-            error_message = "AnyVar API timeout must be positive and finite."
-            raise ValueError(error_message)
-
-        if type(max_search_span) is not int or max_search_span <= 0:
-            error_message = "Maximum search span must be a positive integer."
-            raise ValueError(error_message)
-
-        if type(max_response_bytes) is not int or max_response_bytes <= 0:
-            error_message = "Maximum response bytes must be a positive integer."
-            raise ValueError(error_message)
+        self.settings = settings if settings is not None else Settings()
 
     def _request_json[ResponseT: AnyVarResponse](
         self,
@@ -365,10 +247,10 @@ class AnyVarClient:
         try:
             with requests.request(
                 method=http_method,
-                url=f"{self.base_url}{path}",
+                url=f"{self.settings.anyvar_api_url.rstrip('/')}{path}",
                 headers={"Accept": "application/json"},
                 json=json_body,
-                timeout=self.timeout,
+                timeout=self.settings.anyvar_api_timeout,
                 stream=True,
                 allow_redirects=False,
             ) as response:
@@ -410,10 +292,10 @@ class AnyVarClient:
         body = bytearray()
         for chunk in response.iter_content(RESPONSE_CHUNK_SIZE):
             body.extend(chunk)
-            if len(body) > self.max_response_bytes:
+            if len(body) > self.settings.anyvar_max_response_bytes:
                 error_message = (
                     f"AnyVar request {operation} response exceeds the "
-                    f"{self.max_response_bytes}-byte limit."
+                    f"{self.settings.anyvar_max_response_bytes}-byte limit."
                 )
                 raise AnyVarAPIError(error_message, operation=operation)
 
@@ -545,10 +427,8 @@ class AnyVarClient:
 
         # AnyVar caps page size but has no interval-width limit. This configurable
         # MCP limit restricts broad queries; pagination alone does not bound query cost.
-        if end - start + 1 > self.max_search_span:
-            error_message = (
-                f"Search interval exceeds the {self.max_search_span}-position limit."
-            )
+        if end - start + 1 > self.settings.anyvar_max_search_span:
+            error_message = f"Search interval exceeds the {self.settings.anyvar_max_search_span}-position limit."
             raise ValueError(error_message)
 
         if cursor is not None:

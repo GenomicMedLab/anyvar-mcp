@@ -11,6 +11,7 @@ import pytest
 import requests
 
 from anyvar_mcp.clients.anyvar import AnyVarAPIError, AnyVarClient, AnyVarOperation
+from anyvar_mcp.config import Settings
 
 
 @pytest.fixture
@@ -46,7 +47,11 @@ def test_get_service_info(
         "id": "org.example.anyvar",
     }
     mock_http_response.json.return_value = payload
-    client = AnyVarClient("https://anyvar.example/api/", timeout=3)
+    client = AnyVarClient(
+        settings=Settings(
+            anyvar_api_url="https://anyvar.example/api/", anyvar_api_timeout=3
+        )
+    )
 
     result = client.get_service_info()
 
@@ -111,7 +116,9 @@ def test_get_variant_encodes_identifier(
     vrs_id = "ga4gh:VA.example/a?b#c"
     mock_http_response.json.return_value = {"data": {"id": vrs_id}, "messages": []}
 
-    result = AnyVarClient("https://anyvar.example").get_variant(vrs_id)
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.get_variant(vrs_id)
 
     assert mock_http_request.call_args.kwargs["url"] == (
         "https://anyvar.example/object/ga4gh%3AVA.example%2Fa%3Fb%23c"
@@ -129,7 +136,9 @@ def test_get_variant_mappings(
     }
     mock_http_response.json.return_value = {"mappings": [mapping]}
 
-    result = AnyVarClient("https://anyvar.example").get_variant_mappings(
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.get_variant_mappings(
         "ga4gh:VA.dest", "liftover_to", as_source=False
     )
 
@@ -146,7 +155,9 @@ def test_get_variant_mappings_without_filter(
 ) -> None:
     mock_http_response.json.return_value = {"mappings": []}
 
-    result = AnyVarClient("https://anyvar.example").get_variant_mappings("id")
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.get_variant_mappings("id")
 
     assert mock_http_request.call_args.kwargs["url"] == (
         "https://anyvar.example/object/id/mappings?as_source=true"
@@ -163,7 +174,9 @@ def test_search_variants(
     }
 
     # Equal endpoints are a valid point search. '&' must stay inside accession.
-    result = AnyVarClient("https://anyvar.example").search_variants("NC_1&x=1", 0, 0)
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.search_variants("NC_1&x=1", 0, 0)
 
     assert mock_http_request.call_args_list[0].kwargs["url"] == (
         "https://anyvar.example/variations"
@@ -179,9 +192,9 @@ def test_search_with_cursor(
     mock_http_response.json.return_value = {"variations": [], "next_cursor": None}
 
     # Forward the cursor unchanged, including reserved URL characters.
-    result = AnyVarClient("https://anyvar.example").search_variants(
-        "NC_1", 0, 10, page_size=5, cursor="next+/="
-    )
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.search_variants("NC_1", 0, 10, page_size=5, cursor="next+/=")
 
     assert mock_http_request.call_args.kwargs["url"] == (
         "https://anyvar.example/variations"
@@ -368,7 +381,7 @@ def test_response_size_limit(
     )
 
     with pytest.raises(AnyVarAPIError, match="response exceeds the 20-byte limit"):
-        AnyVarClient(max_response_bytes=20).get_service_info()
+        AnyVarClient(settings=Settings(anyvar_max_response_bytes=20)).get_service_info()
 
     mock_http_response.__exit__.assert_called_once()
     mock_http_request.assert_called_once()
@@ -376,9 +389,10 @@ def test_response_size_limit(
 
 def test_search_span_limit(mock_http_request: MagicMock) -> None:
     """Reject a search interval wider than the configured limit."""
+    client = AnyVarClient(settings=Settings(anyvar_max_search_span=10))
 
     with pytest.raises(ValueError, match="10-position limit"):
-        AnyVarClient(max_search_span=10).search_variants("NC_1", 0, 10)
+        client.search_variants("NC_1", 0, 10)
 
     mock_http_request.assert_not_called()
 
@@ -451,7 +465,7 @@ def test_invalid_response(
 )
 def test_invalid_url(base_url: str) -> None:
     with pytest.raises(ValueError, match="URL"):
-        AnyVarClient(base_url)
+        Settings(anyvar_api_url=base_url)
 
 
 @pytest.mark.parametrize(
@@ -462,5 +476,6 @@ def test_invalid_url(base_url: str) -> None:
     ],
 )
 def test_invalid_timeout(timeout: float) -> None:
-    with pytest.raises(ValueError, match="timeout"):
-        AnyVarClient(timeout=timeout)
+    """Reject nonpositive or infinite explicit timeouts during configuration."""
+    with pytest.raises(ValueError, match=r"(?i)timeout"):
+        Settings(anyvar_api_timeout=timeout)
