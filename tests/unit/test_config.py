@@ -13,7 +13,12 @@ from anyvar_mcp import config
 @pytest.fixture(autouse=True)
 def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Ignore host configuration and run outside the source tree."""
-    for key in ("ANYVAR_API_URL", "ANYVAR_API_TIMEOUT"):
+    for key in (
+        "ANYVAR_API_URL",
+        "ANYVAR_API_TIMEOUT",
+        "ANYVAR_MAX_SEARCH_SPAN",
+        "ANYVAR_MAX_RESPONSE_BYTES",
+    ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.chdir(tmp_path)
 
@@ -24,6 +29,8 @@ def test_defaults_without_env_file() -> None:
 
     assert settings.anyvar_api_url == "http://localhost:8000"
     assert settings.anyvar_api_timeout == 10.0
+    assert settings.anyvar_max_search_span == 1_000_000
+    assert settings.anyvar_max_response_bytes == 65_536
 
 
 def test_env_file_and_environment_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,3 +61,21 @@ def test_invalid_settings(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
 
     assert caught.value.errors()[0]["loc"] == ("ANYVAR_API_TIMEOUT",)
     assert "secret-config-token" not in "".join(format_exception(caught.value))
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "ANYVAR_MAX_SEARCH_SPAN",
+        "ANYVAR_MAX_RESPONSE_BYTES",
+    ],
+)
+def test_invalid_resource_limit(monkeypatch: pytest.MonkeyPatch, setting: str) -> None:
+    """Reject nonpositive client resource limits."""
+
+    monkeypatch.setenv(setting, "0")
+
+    with pytest.raises(ValidationError) as caught:
+        config.Settings()
+
+    assert caught.value.errors()[0]["loc"] == (setting,)

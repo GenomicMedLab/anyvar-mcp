@@ -25,5 +25,12 @@ class Settings(BaseSettings):
         default=10.0, alias="ANYVAR_API_TIMEOUT", gt=0, allow_inf_nan=False
     )
 
+    anyvar_max_search_span: int = Field(
+        default=1_000_000, alias="ANYVAR_MAX_SEARCH_SPAN", gt=0
+    )
+    anyvar_max_response_bytes: int = Field(
+        default=65_536, alias="ANYVAR_MAX_RESPONSE_BYTES", gt=0
+    )
+
 
 settings = Settings()
