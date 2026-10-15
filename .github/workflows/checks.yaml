@@ -24,7 +24,25 @@ jobs:
         run: uv sync --extra tests
 
       - name: Run tests
-        run: uv run pytest -m ci_ok
+        run: uv run pytest -m "not live"
+
+  docs:
+    name: documentation build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install documentation dependencies
+        run: uv sync --extra docs
+      - name: Check documentation
+        run: uv run zensical build --clean --strict
 
   lint:
     name: lint

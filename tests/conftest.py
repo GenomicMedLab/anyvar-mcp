@@ -1,5 +1,23 @@
 """Configuration and shared fixtures for test suite."""
 
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Ignore host configuration and run outside the source tree."""
+    for key in (
+        "ANYVAR_API_URL",
+        "ANYVAR_API_TIMEOUT",
+        "ANYVAR_MAX_SEARCH_SPAN",
+        "ANYVAR_MAX_RESPONSE_BYTES",
+        "ANYVAR_SEARCH_PAGE_SIZE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.chdir(tmp_path)
+
 
 def pytest_addoption(parser):
     """Add custom commands to pytest invocation.
