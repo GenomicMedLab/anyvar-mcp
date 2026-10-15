@@ -31,6 +31,3 @@ class Settings(BaseSettings):
     anyvar_max_response_bytes: int = Field(
         default=65_536, alias="ANYVAR_MAX_RESPONSE_BYTES", gt=0
     )
-
-
-settings = Settings()

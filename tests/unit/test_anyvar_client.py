@@ -1,5 +1,6 @@
 """Test AnyVar client requests and response handling with mocked HTTP service."""
 
+import json
 from collections.abc import Iterator
 from functools import partial
 from http import HTTPMethod
@@ -17,8 +18,12 @@ def mock_http_response() -> MagicMock:
     """Provide a successful response whose JSON body each test can set."""
     response = MagicMock(spec=requests.Response)
     # _request_json uses `with requests.request(...) as response`.
-    # Return this mock from __enter__ so response.json() uses the test's payload.
+    # Return this mock from __enter__ so streamed content uses the test's payload.
     response.__enter__.return_value = response
+    response.is_redirect = False
+    response.iter_content.side_effect = lambda _chunk_size: iter(
+        [json.dumps(response.json()).encode()]
+    )
     return response
 
 
@@ -53,6 +58,7 @@ def test_get_service_info(
         json=None,
         timeout=3,
         stream=True,
+        allow_redirects=False,
     )
     # Preserve metadata fields that the client does not define.
     assert result.model_dump() == payload
@@ -159,7 +165,7 @@ def test_search_variants(
     # Equal endpoints are a valid point search. '&' must stay inside accession.
     result = AnyVarClient("https://anyvar.example").search_variants("NC_1&x=1", 0, 0)
 
-    assert mock_http_request.call_args.kwargs["url"] == (
+    assert mock_http_request.call_args_list[0].kwargs["url"] == (
         "https://anyvar.example/variations"
         "?accession=NC_1%26x%3D1&start=0&end=0&page_size=1000"
     )
@@ -214,10 +220,12 @@ def test_blank_mapping_identifier(mock_http_request: MagicMock, vrs_id: str) -> 
     [
         (" ", 0, 10, 1000, None, "accession"),  # An accession cannot be blank.
         ("NC_1", 0, 10, 1000, " ", "Cursor"),  # Use None when there is no cursor.
+        ("chromosome 10", 0, 10, 1000, None, "require GRCh37 or GRCh38"),
     ],
     ids=[
         "blank-accession",
         "blank-cursor",
+        "ambiguous-chromosome",
     ],
 )
 def test_invalid_search_inputs(
@@ -296,6 +304,20 @@ def test_http_error(
     mock_http_request.assert_called_once()
 
 
+def test_redirect_is_rejected(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    """Reject upstream redirects before reading their response bodies."""
+
+    mock_http_response.is_redirect = True
+
+    with pytest.raises(AnyVarAPIError, match="was redirected"):
+        AnyVarClient().get_variant("id")
+
+    mock_http_response.iter_content.assert_not_called()
+    mock_http_request.assert_called_once()
+
+
 @pytest.mark.parametrize("error_type", [requests.ConnectionError, requests.Timeout])
 def test_connection_failure(
     mock_http_request: MagicMock, error_type: type[Exception]
@@ -313,7 +335,7 @@ def test_response_read_timeout(
     mock_http_request: MagicMock, mock_http_response: MagicMock
 ) -> None:
     # A connection can succeed and then time out while reading the body.
-    mock_http_response.json.side_effect = requests.ReadTimeout("read timed out")
+    mock_http_response.iter_content.side_effect = requests.ReadTimeout("read timed out")
 
     with pytest.raises(AnyVarAPIError):
         AnyVarClient().get_service_info()
@@ -325,8 +347,8 @@ def test_response_read_timeout(
 def test_invalid_json(
     mock_http_request: MagicMock, mock_http_response: MagicMock
 ) -> None:
-    mock_http_response.json.side_effect = requests.exceptions.JSONDecodeError(
-        "Invalid JSON", "not JSON", 0
+    mock_http_response.iter_content.side_effect = lambda _chunk_size: iter(
+        [b"not JSON"]
     )
 
     with pytest.raises(AnyVarAPIError, match="invalid JSON"):
@@ -334,6 +356,31 @@ def test_invalid_json(
 
     mock_http_response.__exit__.assert_called_once()
     mock_http_request.assert_called_once()
+
+
+def test_response_size_limit(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    """Stop reading when streamed content exceeds the byte limit."""
+
+    mock_http_response.iter_content.side_effect = lambda _chunk_size: iter(
+        [b'{"name":"AnyVar",', b'"version":"1.0"}']
+    )
+
+    with pytest.raises(AnyVarAPIError, match="response exceeds the 20-byte limit"):
+        AnyVarClient(max_response_bytes=20).get_service_info()
+
+    mock_http_response.__exit__.assert_called_once()
+    mock_http_request.assert_called_once()
+
+
+def test_search_span_limit(mock_http_request: MagicMock) -> None:
+    """Reject a search interval wider than the configured limit."""
+
+    with pytest.raises(ValueError, match="10-position limit"):
+        AnyVarClient(max_search_span=10).search_variants("NC_1", 0, 10)
+
+    mock_http_request.assert_not_called()
 
 
 @pytest.mark.parametrize(

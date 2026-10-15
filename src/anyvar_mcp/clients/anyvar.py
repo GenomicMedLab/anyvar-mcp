@@ -1,11 +1,14 @@
 """Access the AnyVar HTTP API.
 
 Local client and response models avoid AnyVar's server dependencies.
-AnyVar validates request values; the client rejects blank strings locally.
+AnyVar validates request values; the client enforces local search policies
+and rejects blank strings.
 See https://github.com/GenomicMedLab/anyvar-mcp/discussions/10.
 """
 
+import json
 import math
+import re
 from collections.abc import Mapping
 from enum import StrEnum
 from http import HTTPMethod
@@ -15,9 +18,10 @@ from urllib.parse import quote, urlencode, urlsplit
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from anyvar_mcp.config import settings
+from anyvar_mcp.config import Settings
 
 ANYVAR_SEARCH_PAGE_SIZE = 1000
+RESPONSE_CHUNK_SIZE = 65_536  # 64 KiB
 
 
 class Assembly(StrEnum):
@@ -170,15 +174,34 @@ class AnyVarClient:
 
     def __init__(
         self,
-        base_url: str = settings.anyvar_api_url,
-        timeout: float = settings.anyvar_api_timeout,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        *,
+        max_search_span: int | None = None,
+        max_response_bytes: int | None = None,
     ) -> None:
         """Configure the service URL and request timeout.
 
         :param base_url: HTTP or HTTPS AnyVar service URL, optionally with a path prefix.
         :param timeout: Positive, finite connect and read timeout in seconds.
+        :param max_search_span: Maximum inclusive search interval width.
+        :param max_response_bytes: Maximum upstream response body size in bytes.
         :raise ValueError: If the URL or timeout is invalid.
         """
+        if any(
+            value is None
+            for value in (base_url, timeout, max_search_span, max_response_bytes)
+        ):
+            settings = Settings()
+            if base_url is None:
+                base_url = settings.anyvar_api_url
+            if timeout is None:
+                timeout = settings.anyvar_api_timeout
+            if max_search_span is None:
+                max_search_span = settings.anyvar_max_search_span
+            if max_response_bytes is None:
+                max_response_bytes = settings.anyvar_max_response_bytes
+
         url_error_message = (
             "AnyVar API URL must be HTTP(S) without credentials, query, or fragment."
         )
@@ -200,9 +223,17 @@ class AnyVarClient:
         if not math.isfinite(timeout) or timeout <= 0:
             error_message = "AnyVar API timeout must be positive and finite."
             raise ValueError(error_message)
+        if type(max_search_span) is not int or max_search_span <= 0:
+            error_message = "Maximum search span must be a positive integer."
+            raise ValueError(error_message)
+        if type(max_response_bytes) is not int or max_response_bytes <= 0:
+            error_message = "Maximum response bytes must be a positive integer."
+            raise ValueError(error_message)
 
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_search_span = max_search_span
+        self.max_response_bytes = max_response_bytes
 
     def _request_json[ResponseT: AnyVarResponse](
         self,
@@ -244,10 +275,23 @@ class AnyVarClient:
                 json=json_body,
                 timeout=self.timeout,
                 stream=True,
+                allow_redirects=False,
             ) as response:
+                if response.is_redirect:
+                    error_message = f"AnyVar request {operation} was redirected."
+                    raise AnyVarAPIError(error_message, operation=operation)
                 response.raise_for_status()
-                payload = response.json()
-        except requests.exceptions.JSONDecodeError:
+                body = bytearray()
+                for chunk in response.iter_content(RESPONSE_CHUNK_SIZE):
+                    body.extend(chunk)
+                    if len(body) > self.max_response_bytes:
+                        error_message = (
+                            f"AnyVar request {operation} response exceeds the "
+                            f"{self.max_response_bytes}-byte limit."
+                        )
+                        raise AnyVarAPIError(error_message, operation=operation)
+                payload = json.loads(body)
+        except (json.JSONDecodeError, UnicodeError):
             error_message = f"AnyVar request {operation} returned invalid JSON."
             raise AnyVarAPIError(error_message, operation=operation) from None
         except requests.HTTPError as exc:
@@ -371,18 +415,40 @@ class AnyVarClient:
     ) -> SearchResponse:
         """Fetch one page of variants overlapping a closed reference interval.
 
-        :param accession: Sequence accession recognized by AnyVar.
+        :param accession: Assembly-qualified chromosome alias or sequence accession
+            recognized by AnyVar.
         :param start: Nonnegative, inclusive inter-residue start coordinate.
         :param end: Inclusive inter-residue end coordinate, at least start.
         :param page_size: Maximum results per page, from 1 to 10000. Keep this
             unchanged when following cursors for the same search.
         :param cursor: Opaque ``next_cursor`` from the preceding response.
         :return: AnyVar response with ``variations`` and an optional ``next_cursor``.
-        :raises ValueError: If the accession or supplied cursor is blank.
+        :raises ValueError: If the accession or supplied cursor is blank, the
+            chromosome lacks an assembly, or the interval exceeds the span limit.
         :raise AnyVarAPIError: If the request fails or the response does not match the
             expected schema.
         """
         _is_nonempty_string(accession, "A nonempty sequence accession is required.")
+        # AnyVar resolves accessions upstream. This MCP policy requires callers
+        # to specify an assembly for bare chromosome names before searching.
+        if re.fullmatch(
+            r"(?i)(?:chromosome\s*|chr)?(?:[1-9]|1[0-9]|2[0-2]|X|Y|MT)",
+            accession.strip(),
+        ):
+            error_message = (
+                "Chromosome searches require GRCh37 or GRCh38. Use an "
+                "assembly-qualified accession such as GRCh38:chr10."
+            )
+            raise ValueError(error_message)
+
+        # AnyVar caps page size but has no interval-width limit. This configurable
+        # MCP limit restricts broad queries; pagination alone does not bound query cost.
+        if end - start + 1 > self.max_search_span:
+            error_message = (
+                f"Search interval exceeds the {self.max_search_span}-position limit."
+            )
+            raise ValueError(error_message)
+
         if cursor is not None:
             _is_nonempty_string(cursor, "Cursor must be a nonempty string or None.")
 
