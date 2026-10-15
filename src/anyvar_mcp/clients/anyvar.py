@@ -1,6 +1,7 @@
 """Access the AnyVar HTTP API.
 
 Local client and response models avoid AnyVar's server dependencies.
+AnyVar validates request values; the client rejects blank strings locally.
 See https://github.com/GenomicMedLab/anyvar-mcp/discussions/10.
 """
 
@@ -16,7 +17,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from anyvar_mcp.config import settings
 
-ANYVAR_SEARCH_MAX_PAGE_SIZE = 10000
 ANYVAR_SEARCH_PAGE_SIZE = 1000
 
 
@@ -90,23 +90,6 @@ def _is_nonempty_string(value: object, error_message: str) -> None:
     :raise ValueError: If the input is not a string or contains only whitespace.
     """
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(error_message)
-
-
-def _is_allowed_value(
-    value: object,
-    allowed_values: tuple[str, ...] | tuple[bool, ...],
-    error_message: str,
-) -> None:
-    """Require an input whose type and value match the allowed values.
-
-    :param value: Value that must match one of the ``allowed_values``.
-    :param allowed_values: Tuple of allowed strings or booleans.
-    :param error_message: Error message for invalid input.
-    :raise ValueError: If the input has the wrong type or is not an allowed value.
-    """
-    allowed_type = str if isinstance(allowed_values[0], str) else bool
-    if not isinstance(value, allowed_type) or value not in allowed_values:
         raise ValueError(error_message)
 
 
@@ -326,14 +309,11 @@ class AnyVarClient:
         :param definition: Supported HGVS, SPDI, or gnomAD expression.
         :param assembly_name: Reference assembly, used for gnomAD expressions.
         :return: Input, VRS object and identifier when resolved, and messages.
-        :raise ValueError: If the definition or assembly is invalid.
+        :raises ValueError: If the definition is blank.
         :raise AnyVarAPIError: If the request fails or response does not match the
             expected schema.
         """
         _is_nonempty_string(definition, "A nonempty variant definition is required.")
-        _is_allowed_value(
-            assembly_name, tuple(Assembly), "Assembly must be GRCh37 or GRCh38."
-        )
 
         return self._request_json(
             AnyVarEndpoint.VARIATION,
@@ -366,21 +346,10 @@ class AnyVarClient:
         :param mapping_type: Optional relationship type to filter.
         :param as_source: Retrieve outgoing mappings if true, incoming otherwise.
         :return: Available mappings, including an empty list when none are stored.
-        :raise ValueError: If the identifier, mapping type, or direction is invalid.
+        :raises ValueError: If the identifier is blank.
         :raise AnyVarAPIError: If the request fails or response does not match the
             expected schema.
         """
-        _is_nonempty_string(vrs_id, "A nonempty VRS identifier is required.")
-        if mapping_type is not None:
-            _is_allowed_value(
-                mapping_type,
-                tuple(MappingType),
-                "Mapping type must be liftover_to, transcribe_to, or translate_to.",
-            )
-        _is_allowed_value(
-            as_source, (True, False), "Mapping direction as_source must be a boolean."
-        )
-
         query_parameters = {"as_source": str(as_source).lower()}
         if mapping_type is not None:
             query_parameters["mapping_type"] = mapping_type
@@ -409,24 +378,11 @@ class AnyVarClient:
             unchanged when following cursors for the same search.
         :param cursor: Opaque ``next_cursor`` from the preceding response.
         :return: AnyVar response with ``variations`` and an optional ``next_cursor``.
-        :raise ValueError: If the accession, interval, or pagination is invalid.
+        :raises ValueError: If the accession or supplied cursor is blank.
         :raise AnyVarAPIError: If the request fails or the response does not match the
             expected schema.
         """
         _is_nonempty_string(accession, "A nonempty sequence accession is required.")
-        if type(start) is not int or type(end) is not int or not 0 <= start <= end:
-            error_message = "Coordinates must be integers satisfying 0 <= start <= end."
-            raise ValueError(error_message)
-
-        if (
-            type(page_size) is not int
-            or not 1 <= page_size <= ANYVAR_SEARCH_MAX_PAGE_SIZE
-        ):
-            error_message = (
-                f"Page size must be an integer from 1 to {ANYVAR_SEARCH_MAX_PAGE_SIZE}."
-            )
-            raise ValueError(error_message)
-
         if cursor is not None:
             _is_nonempty_string(cursor, "Cursor must be a nonempty string or None.")
 

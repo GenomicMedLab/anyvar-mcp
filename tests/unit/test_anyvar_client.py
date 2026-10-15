@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from functools import partial
 from http import HTTPMethod
 from traceback import format_exception
-from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -186,22 +185,10 @@ def test_search_with_cursor(
     assert result.next_cursor is None
 
 
-@pytest.mark.parametrize(
-    ("definition", "assembly", "error_message"),
-    [
-        (" ", "GRCh38", "definition"),  # A definition must contain non-whitespace text.
-        ("valid", "GRCh36", "Assembly"),  # Only GRCh37 and GRCh38 are supported.
-    ],
-    ids=["blank-definition", "unsupported-assembly"],
-)
-def test_invalid_registration(
-    mock_http_request: MagicMock,
-    definition: str,
-    assembly: str,
-    error_message: str,
-) -> None:
-    with pytest.raises(ValueError, match=error_message):
-        AnyVarClient().register_variant(definition, assembly)
+def test_blank_registration_definition(mock_http_request: MagicMock) -> None:
+    """Reject whitespace-only definitions before requesting AnyVar."""
+    with pytest.raises(ValueError, match="definition"):
+        AnyVarClient().register_variant(" ")
 
     mock_http_request.assert_not_called()
 
@@ -213,20 +200,11 @@ def test_blank_variant_identifier(mock_http_request: MagicMock) -> None:
     mock_http_request.assert_not_called()
 
 
-def test_invalid_mapping_type(mock_http_request: MagicMock) -> None:
-    # Only the mapping types listed in MappingType are accepted.
-    with pytest.raises(ValueError, match="Mapping type"):
-        AnyVarClient().get_variant_mappings("id", mapping_type="unknown")
-
-    mock_http_request.assert_not_called()
-
-
-def test_invalid_mapping_direction(mock_http_request: MagicMock) -> None:
-    # as_source requires a bool. cast leaves this invalid string unchanged.
-    invalid_direction = cast("bool", "false")
-
-    with pytest.raises(ValueError, match="Mapping direction"):
-        AnyVarClient().get_variant_mappings("id", as_source=invalid_direction)
+@pytest.mark.parametrize("vrs_id", ["", " \t\n"])
+def test_blank_mapping_identifier(mock_http_request: MagicMock, vrs_id: str) -> None:
+    """Reject blank mapping identifiers through the shared path builder."""
+    with pytest.raises(ValueError, match="identifier"):
+        AnyVarClient().get_variant_mappings(vrs_id)
 
     mock_http_request.assert_not_called()
 
@@ -235,20 +213,10 @@ def test_invalid_mapping_direction(mock_http_request: MagicMock) -> None:
     ("accession", "start", "end", "page_size", "cursor", "error_message"),
     [
         (" ", 0, 10, 1000, None, "accession"),  # An accession cannot be blank.
-        ("NC_1", -1, 10, 1000, None, "Coordinates"),  # Start must be nonnegative.
-        ("NC_1", 11, 10, 1000, None, "Coordinates"),  # Start cannot exceed end.
-        ("NC_1", True, 10, 1000, None, "Coordinates"),  # Booleans are not coordinates.
-        ("NC_1", 0, 10, 0, None, "Page size"),  # Minimum page size: 1.
-        ("NC_1", 0, 10, 10001, None, "Page size"),  # The maximum page size is 10000.
         ("NC_1", 0, 10, 1000, " ", "Cursor"),  # Use None when there is no cursor.
     ],
     ids=[
         "blank-accession",
-        "negative-start",
-        "reversed-interval",
-        "boolean-coordinate",
-        "page-size-too-small",
-        "page-size-too-large",
         "blank-cursor",
     ],
 )
@@ -261,12 +229,52 @@ def test_invalid_search_inputs(
     cursor: str | None,
     error_message: str,
 ) -> None:
+    """Reject blank accessions and cursors before requesting AnyVar."""
     with pytest.raises(ValueError, match=error_message):
         AnyVarClient().search_variants(
             accession, start, end, page_size=page_size, cursor=cursor
         )
 
     mock_http_request.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        AnyVarOperation.REGISTER_VARIANT,
+        AnyVarOperation.GET_VARIANT_MAPPINGS,
+        AnyVarOperation.SEARCH_VARIANTS,
+    ],
+)
+def test_request_validation_delegated_to_anyvar(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    operation: AnyVarOperation,
+) -> None:
+    """Surface upstream validation failures for values the client forwards."""
+    mock_http_response.status_code = 422
+    mock_http_response.raise_for_status.side_effect = requests.HTTPError(
+        response=mock_http_response
+    )
+    client = AnyVarClient()
+    request = {
+        AnyVarOperation.REGISTER_VARIANT: partial(
+            client.register_variant, "variant", "GRCh36"
+        ),
+        AnyVarOperation.GET_VARIANT_MAPPINGS: partial(
+            client.get_variant_mappings, "id", "unknown"
+        ),
+        AnyVarOperation.SEARCH_VARIANTS: partial(
+            client.search_variants, "NC_1", 10, -1, page_size=10001
+        ),
+    }[operation]
+
+    with pytest.raises(AnyVarAPIError) as caught:
+        request()
+
+    assert caught.value.operation is operation
+    assert caught.value.status_code == 422
+    mock_http_request.assert_called_once()
 
 
 def test_http_error(
