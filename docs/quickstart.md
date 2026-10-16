@@ -3,6 +3,12 @@
 Only local MCP server connections over stdio are currently supported.
 Your AI agent starts the MCP server when it connects.
 
+## Watch the demo
+
+![AnyVar MCP live demo](assets/gif/anyvar-mcp-live-demo.gif)
+
+_Codex CLI using GPT-6-Luna at low reasoning effort_
+
 ## Prepare AnyVar
 
 Start the [AnyVar HTTP API](dependencies.md#start-the-anyvar-http-api) and keep it
