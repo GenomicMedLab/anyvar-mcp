@@ -8,7 +8,10 @@ edit_uri = "edit/main/docs/"
 dev_addr = "127.0.0.1:8001"
 nav = [
   { "Home" = "index.md" },
-  { "Getting started" = "getting-started.md" },
+  { "Quickstart" = "quickstart.md" },
+  { "Dependencies" = "dependencies.md" },
+  { "Configuration" = "configuration.md" },
+  { "Connect your AI agent" = "connect.md" },
   { "Contributing" = "contributing.md" },
 ]
 
