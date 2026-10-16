@@ -20,6 +20,9 @@ def test_defaults_without_env_file() -> None:
 
     assert settings.anyvar_api_url == "http://localhost:8000"
     assert settings.anyvar_api_timeout == 10.0
+    assert settings.anyvar_enable_registration is False
+    assert settings.anyvar_max_calls_per_minute == 30
+    assert settings.anyvar_max_calls_per_hour == 500
     assert settings.anyvar_search_page_size == 100
     assert settings.anyvar_max_search_span == 1_000_000
     assert settings.anyvar_max_response_bytes == 1_048_576
@@ -27,7 +30,7 @@ def test_defaults_without_env_file() -> None:
 
 @pytest.mark.parametrize(
     "value",
-    ["0", "nan", "secret-config-token"],
+    ["0", "nan", "invalid", "inf", "secret-config-token"],
 )
 def test_invalid_settings(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     """Reject invalid timeouts and identify the affected configuration field."""
@@ -116,3 +119,23 @@ def test_settings_reject_assignment() -> None:
 
     assert caught.value.errors()[0]["type"] == "frozen_instance"
     assert settings.anyvar_api_timeout == 3.0
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "ANYVAR_MAX_SEARCH_SPAN",
+        "ANYVAR_MAX_RESPONSE_BYTES",
+        "ANYVAR_MAX_CALLS_PER_MINUTE",
+        "ANYVAR_MAX_CALLS_PER_HOUR",
+    ],
+)
+def test_invalid_resource_limit(monkeypatch: pytest.MonkeyPatch, setting: str) -> None:
+    """Reject nonpositive resource and call limits."""
+
+    monkeypatch.setenv(setting, "0")
+
+    with pytest.raises(ValidationError) as caught:
+        config.Settings()
+
+    assert caught.value.errors()[0]["loc"] == (setting,)

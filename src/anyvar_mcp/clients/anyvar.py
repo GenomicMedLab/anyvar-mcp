@@ -8,7 +8,7 @@ See https://github.com/GenomicMedLab/anyvar-mcp/discussions/10.
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from http import HTTPMethod
 from types import MappingProxyType
@@ -178,16 +178,27 @@ class AnyVarAPIError(Exception):
 class AnyVarClient:
     """Make requests to an AnyVar HTTP service."""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        request_guard: Callable[[], None] | None = None,
+    ) -> None:
         """Configure the client with validated settings.
 
         Omitted settings load environment variables, .env values, and defaults.
         Explicit Settings field values take precedence over those sources.
 
         :param settings: Service connection settings and resource limits.
+        :param request_guard: Optional callback taking no arguments. Must return
+            None to allow the HTTP request or raise an exception to block it.
+            The MCP server supplies ``partial(_request_budget.reserve, settings)``,
+            which reserves one call or raises ToolError if a rate limit is reached.
+            Runs after local validation, so invalid inputs consume no budget.
         :raises ValidationError: If loading omitted settings finds invalid configuration.
         """
         self.settings = settings if settings is not None else Settings()
+        self._request_guard = request_guard
 
     def _request_json[ResponseT: AnyVarResponse](
         self,
@@ -251,6 +262,9 @@ class AnyVarClient:
         :return: Decoded JSON payload.
         :raises AnyVarAPIError: If the request fails or its response is rejected.
         """
+        if self._request_guard is not None:
+            self._request_guard()
+
         try:
             with requests.request(
                 method=http_method,

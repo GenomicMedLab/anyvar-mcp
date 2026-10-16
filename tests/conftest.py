@@ -14,6 +14,9 @@ def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "ANYVAR_MAX_SEARCH_SPAN",
         "ANYVAR_MAX_RESPONSE_BYTES",
         "ANYVAR_SEARCH_PAGE_SIZE",
+        "ANYVAR_ENABLE_REGISTRATION",
+        "ANYVAR_MAX_CALLS_PER_MINUTE",
+        "ANYVAR_MAX_CALLS_PER_HOUR",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.chdir(tmp_path)
