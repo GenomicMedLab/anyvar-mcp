@@ -8,3 +8,7 @@
 MCP server for [AnyVar](https://github.com/biocommons/anyvar).
 
 See the [documentation](https://genomicmedlab.github.io/anyvar-mcp/) for setup and development instructions.
+
+![AnyVar MCP live demo](docs/assets/gif/anyvar-mcp-live-demo.gif)
+
+_Codex CLI using GPT-6-Luna at low reasoning effort_
