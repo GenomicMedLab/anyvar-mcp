@@ -101,11 +101,19 @@ class AnyVarResponse(BaseModel):
     model_config = ConfigDict(strict=True, extra="allow")
 
 
+class ServiceType(AnyVarResponse):
+    """Identify the service implementation and version in GA4GH service info."""
+
+    group: str
+    artifact: str
+    version: str
+
+
 class ServiceInfoResponse(AnyVarResponse):
     """Describe the AnyVar service and its supported data standards."""
 
     name: str
-    version: str
+    type: ServiceType
     spec_metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -317,7 +325,8 @@ class AnyVarClient:
     def get_service_info(self) -> ServiceInfoResponse:
         """Retrieve service metadata.
 
-        :return: Service name, version, data standards, and additional metadata.
+        :return: Service name, implementation type and version, data standards,
+            and additional metadata.
         :raise AnyVarAPIError: If the request fails or response does not match the
             expected schema.
         """
