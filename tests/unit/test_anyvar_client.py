@@ -43,11 +43,16 @@ def mock_http_request(mock_http_response: MagicMock) -> Iterator[MagicMock]:
 def test_get_service_info(
     mock_http_request: MagicMock, mock_http_response: MagicMock
 ) -> None:
+    """Accept AnyVar's nested service type and preserve upstream metadata."""
     payload = {
         "name": "AnyVar",
-        "version": "1.0.0",
+        "type": {
+            "group": "org.biocommons",
+            "artifact": "anyvar",
+            "version": "1.0.1.dev196+gec3c7651b",
+        },
         "spec_metadata": {"vrs_version": "2.0.1"},
-        "id": "org.example.anyvar",
+        "id": "org.biocommons.anyvar",
     }
     mock_http_response.json.return_value = payload
     client = AnyVarClient(
@@ -70,6 +75,7 @@ def test_get_service_info(
     )
     # Preserve metadata fields that the client does not define.
     assert result.model_dump() == payload
+    assert result.type.version == "1.0.1.dev196+gec3c7651b"
     mock_http_response.__exit__.assert_called_once()
 
 
@@ -459,7 +465,10 @@ def test_response_size_limit(
     """Stop reading when streamed content exceeds the byte limit."""
 
     mock_http_response.iter_content.side_effect = lambda _chunk_size: iter(
-        [b'{"name":"AnyVar",', b'"version":"1.0"}']
+        [
+            b'{"name":"AnyVar",',
+            b'"type":{"group":"org.biocommons","artifact":"anyvar","version":"1.0"}}',
+        ]
     )
 
     with pytest.raises(AnyVarAPIError, match="response exceeds the 20-byte limit"):
@@ -482,6 +491,14 @@ def test_search_span_limit(mock_http_request: MagicMock) -> None:
 @pytest.mark.parametrize(
     ("operation", "payload"),
     [
+        (AnyVarOperation.SERVICE_INFO, {"name": "AnyVar", "version": "1.0"}),
+        (
+            AnyVarOperation.SERVICE_INFO,
+            {
+                "name": "AnyVar",
+                "type": {"group": "org.biocommons", "artifact": "anyvar"},
+            },
+        ),
         (AnyVarOperation.SEARCH_VARIANTS, []),  # The response must be a JSON object.
         (AnyVarOperation.SEARCH_VARIANTS, {}),  # The variations field is required.
         # Each variation must be an object. Keep private data out of validation errors.
@@ -497,6 +514,8 @@ def test_search_span_limit(mock_http_request: MagicMock) -> None:
         ),
     ],
     ids=[
+        "missing-service-type",
+        "missing-service-version",
         "not-an-object",
         "missing-variations",
         "invalid-variation",
@@ -515,6 +534,7 @@ def test_invalid_response(
     client = AnyVarClient()
     # Bind the operation and its arguments so pytest.raises contains only one call.
     request = {
+        AnyVarOperation.SERVICE_INFO: client.get_service_info,
         AnyVarOperation.REGISTER_VARIANT: partial(
             client.register_variant, "NC_000010.11:g.87894077C>T"
         ),
