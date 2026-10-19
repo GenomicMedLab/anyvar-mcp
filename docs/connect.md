@@ -1,8 +1,12 @@
 # Connect your AI agent
 
-[Install `anyvar-mcp`](quickstart.md#install-the-mcp-server) and start the [AnyVar HTTP API](dependencies.md).
-Keep the API running while you use the tools. Claude Desktop or Codex CLI starts
-`anyvar-mcp` using the command you configure below.
+## Prerequisites
+
+First, install the AI client you want to use: [Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop) or [Codex CLI](https://learn.chatgpt.com/docs/codex/cli#getting-started).
+
+Then [install `anyvar-mcp`](quickstart.md#install-the-mcp-server) and start the
+[AnyVar HTTP API](dependencies.md). Keep the API running while you use the tools.
+The client starts `anyvar-mcp` using the command you configure below.
 
 Set the environment variables in the examples to your values if you want to
 override the defaults. See the [configuration guide](configuration.md).
