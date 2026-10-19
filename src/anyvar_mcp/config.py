@@ -1,16 +1,13 @@
-"""Load AnyVar configuration from .env files and environment variables."""
+"""Configuration for the AnyVar MCP server."""
 
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-SERVER_NAME = "AnyVar"
-SERVER_INSTRUCTIONS = "MCP server for AnyVar."
-
 
 class Settings(BaseSettings):
-    """Resolve immutable settings from constructor values, environment, .env, and defaults."""
+    """Validate configuration loaded from .env files and environment variables."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -28,17 +25,23 @@ class Settings(BaseSettings):
     anyvar_api_timeout: float = Field(
         default=10.0, alias="ANYVAR_API_TIMEOUT", gt=0, allow_inf_nan=False
     )
-
+    anyvar_enable_registration: bool = Field(
+        default=False, alias="ANYVAR_ENABLE_REGISTRATION"
+    )
     anyvar_max_search_span: int = Field(
         default=1_000_000, alias="ANYVAR_MAX_SEARCH_SPAN", gt=0
     )
-    # Default result count controls context use; the byte cap also bounds reads
-    # when individual variants contain large literal sequences.
     anyvar_search_page_size: int = Field(
         default=100, alias="ANYVAR_SEARCH_PAGE_SIZE", gt=0, le=10_000
     )
     anyvar_max_response_bytes: int = Field(
         default=1_048_576, alias="ANYVAR_MAX_RESPONSE_BYTES", gt=0
+    )
+    anyvar_max_calls_per_minute: int = Field(
+        default=30, alias="ANYVAR_MAX_CALLS_PER_MINUTE", gt=0
+    )
+    anyvar_max_calls_per_hour: int = Field(
+        default=500, alias="ANYVAR_MAX_CALLS_PER_HOUR", gt=0
     )
 
     @field_validator("anyvar_api_url")
