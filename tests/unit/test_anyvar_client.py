@@ -1,0 +1,563 @@
+"""Test AnyVar client requests and response handling with mocked HTTP service."""
+
+import json
+from collections.abc import Iterator
+from functools import partial
+from http import HTTPMethod
+from traceback import format_exception
+from unittest.mock import MagicMock, patch
+
+import pytest
+import requests
+
+from anyvar_mcp.clients.anyvar import AnyVarAPIError, AnyVarClient, AnyVarOperation
+from anyvar_mcp.config import Settings
+
+# Isolate every test in this module from host environment and .env settings.
+pytestmark = pytest.mark.usefixtures("isolated_config")
+
+
+@pytest.fixture
+def mock_http_response() -> MagicMock:
+    """Provide a successful response whose JSON body each test can set."""
+    response = MagicMock(spec=requests.Response)
+    # _request_json uses `with requests.request(...) as response`.
+    # Return this mock from __enter__ so streamed content uses the test's payload.
+    response.__enter__.return_value = response
+    response.is_redirect = False
+    response.iter_content.side_effect = lambda _chunk_size: iter(
+        [json.dumps(response.json()).encode()]
+    )
+    return response
+
+
+@pytest.fixture
+def mock_http_request(mock_http_response: MagicMock) -> Iterator[MagicMock]:
+    """Capture requests and return the mocked response."""
+    with patch(
+        "anyvar_mcp.clients.anyvar.requests.request", return_value=mock_http_response
+    ) as request:
+        yield request
+
+
+def test_get_service_info(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    payload = {
+        "name": "AnyVar",
+        "version": "1.0.0",
+        "spec_metadata": {"vrs_version": "2.0.1"},
+        "id": "org.example.anyvar",
+    }
+    mock_http_response.json.return_value = payload
+    client = AnyVarClient(
+        settings=Settings(
+            anyvar_api_url="https://anyvar.example/api/", anyvar_api_timeout=3
+        )
+    )
+
+    result = client.get_service_info()
+
+    # A trailing slash must not create a double slash in the endpoint URL.
+    mock_http_request.assert_called_once_with(
+        method=HTTPMethod.GET,
+        url="https://anyvar.example/api/service-info",
+        headers={"Accept": "application/json"},
+        json=None,
+        timeout=3,
+        stream=True,
+        allow_redirects=False,
+    )
+    # Preserve metadata fields that the client does not define.
+    assert result.model_dump() == payload
+    mock_http_response.__exit__.assert_called_once()
+
+
+def test_register_variant(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    definition = "NP_004324.2:p.Val600Glu"
+    mock_http_response.json.return_value = {
+        "input_variation": {"definition": definition, "assembly_name": "GRCh37"},
+        "object": {"id": "ga4gh:VA.example"},
+        "object_id": "ga4gh:VA.example",
+        "messages": ["Projection unavailable"],
+    }
+
+    result = AnyVarClient().register_variant(definition, "GRCh37")
+
+    request = mock_http_request.call_args.kwargs
+    assert request["method"] == HTTPMethod.PUT
+    assert request["url"].endswith("/variation")
+    assert request["json"] == {"definition": definition, "assembly_name": "GRCh37"}
+    assert result.object_id == "ga4gh:VA.example"
+    assert result.object == {"id": "ga4gh:VA.example"}
+    assert result.messages == ["Projection unavailable"]
+
+
+def test_unresolved_registration(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    # AnyVar can return a translation warning with no registered object.
+    mock_http_response.json.return_value = {
+        "input_variation": {"definition": "unsupported"},
+        "messages": ["Unable to translate unsupported"],
+    }
+
+    result = AnyVarClient().register_variant("unsupported")
+
+    assert result.object is None
+    assert result.object_id is None
+    assert result.messages == ["Unable to translate unsupported"]
+    assert mock_http_request.call_args.kwargs["json"]["assembly_name"] == "GRCh38"
+
+
+def test_get_variant_encodes_identifier(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    # Reserved URL characters must stay inside the identifier.
+    vrs_id = "ga4gh:VA.example/a?b#c"
+    mock_http_response.json.return_value = {"data": {"id": vrs_id}, "messages": []}
+
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.get_variant(vrs_id)
+
+    assert mock_http_request.call_args.kwargs["url"] == (
+        "https://anyvar.example/object/ga4gh%3AVA.example%2Fa%3Fb%23c"
+    )
+    assert result.data == {"id": vrs_id}
+
+
+def test_get_variant_mappings(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    mapping = {
+        "source_id": "ga4gh:VA.source",
+        "dest_id": "ga4gh:VA.dest",
+        "mapping_type": "liftover_to",
+    }
+    mock_http_response.json.return_value = {"mappings": [mapping]}
+
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.get_variant_mappings(
+        "ga4gh:VA.dest", "liftover_to", as_source=False
+    )
+
+    # as_source=False requests incoming mappings.
+    assert mock_http_request.call_args.kwargs["url"] == (
+        "https://anyvar.example/object/ga4gh%3AVA.dest/mappings"
+        "?as_source=false&mapping_type=liftover_to"
+    )
+    assert result.mappings[0].model_dump() == mapping
+
+
+def test_get_variant_mappings_without_filter(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    mock_http_response.json.return_value = {"mappings": []}
+
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.get_variant_mappings("id")
+
+    assert mock_http_request.call_args.kwargs["url"] == (
+        "https://anyvar.example/object/id/mappings?as_source=true"
+    )
+    assert result.mappings == []
+
+
+def test_search_variants(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    mock_http_response.json.return_value = {
+        "variations": [{"id": "ga4gh:VA.example"}],
+        "next_cursor": "next-page",
+    }
+
+    # Equal endpoints are a valid point search. '&' must stay inside accession.
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.search_variants("NC_1&x=1", 0, 0)
+
+    assert mock_http_request.call_args_list[0].kwargs["url"] == (
+        "https://anyvar.example/variations"
+        "?accession=NC_1%26x%3D1&start=0&end=0&page_size=100"
+    )
+    assert result.variations == [{"id": "ga4gh:VA.example"}]
+    assert result.next_cursor == "next-page"
+
+
+def test_search_with_cursor(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    mock_http_response.json.return_value = {"variations": [], "next_cursor": None}
+
+    # Forward the cursor unchanged, including reserved URL characters.
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    result = client.search_variants("NC_1", 0, 10, page_size=5, cursor="next+/=")
+
+    assert mock_http_request.call_args.kwargs["url"] == (
+        "https://anyvar.example/variations"
+        "?accession=NC_1&start=0&end=10&page_size=5&cursor=next%2B%2F%3D"
+    )
+    assert result.variations == []
+    assert result.next_cursor is None
+
+
+@pytest.mark.parametrize("page_size", [None, 5], ids=["configured", "explicit"])
+def test_search_uses_configured_page_size(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    page_size: int | None,
+) -> None:
+    """Use the environment default unless the caller supplies a page size."""
+    # Override the built-in default to verify that searches use configuration.
+    monkeypatch.setenv("ANYVAR_SEARCH_PAGE_SIZE", "25")
+    mock_http_response.json.return_value = {"variations": [], "next_cursor": None}
+    client = AnyVarClient(settings=Settings(anyvar_api_url="https://anyvar.example"))
+
+    client.search_variants("NC_1", 0, 0, page_size=page_size, cursor="next-page")
+
+    # An explicit page size takes precedence, including when following a cursor.
+    expected_size = 25 if page_size is None else page_size
+    assert mock_http_request.call_args.kwargs["url"] == (
+        "https://anyvar.example/variations"
+        f"?accession=NC_1&start=0&end=0&page_size={expected_size}&cursor=next-page"
+    )
+
+
+@pytest.mark.parametrize("page_size", [None, 1000], ids=["default", "large-page"])
+def test_search_page_fits_default_response_limit(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    page_size: int | None,
+) -> None:
+    """Return default and larger requested pages under the default byte cap."""
+    expected_count = 100 if page_size is None else page_size
+    # Exercise streamed reads even with the smaller default page.
+    chunk_size = 4096
+    allele = {
+        "id": "ga4gh:VA.K7akyz9PHB0wg8wBNVlWAAdvMbJUJJfU",
+        "type": "Allele",
+        "digest": "K7akyz9PHB0wg8wBNVlWAAdvMbJUJJfU",
+        "location": {
+            "id": "ga4gh:SL.01EH5o6V6VEyNUq68gpeTwKE7xOo-WAy",
+            "type": "SequenceLocation",
+            "digest": "01EH5o6V6VEyNUq68gpeTwKE7xOo-WAy",
+            "sequenceReference": {
+                "type": "SequenceReference",
+                "refgetAccession": "SQ.ss8r_wB0-b9r44TQTMmVTI92884QvBiB",
+            },
+            "start": 87894076,
+            "end": 87894077,
+        },
+        "state": {"type": "LiteralSequenceExpression", "sequence": "T"},
+    }
+
+    payload = {"variations": [allele] * expected_count, "next_cursor": "next-page"}
+    body = json.dumps(payload).encode()
+
+    # Ensure the page spans multiple response chunks.
+    assert len(body) > chunk_size
+
+    # Replace the fixture's single-chunk body with a stream of chunks.
+    mock_http_response.iter_content.side_effect = None
+    mock_http_response.iter_content.return_value = (
+        body[offset : offset + chunk_size] for offset in range(0, len(body), chunk_size)
+    )
+
+    client = AnyVarClient()
+    if page_size is None:
+        result = client.search_variants("NC_000010.11", 87894070, 87894080)
+    else:
+        result = client.search_variants(
+            "NC_000010.11", 87894070, 87894080, page_size=page_size
+        )
+
+    # Preserve every result and the cursor needed to fetch the next page.
+    assert result.model_dump() == payload
+    assert mock_http_request.call_args.kwargs["url"].endswith(
+        f"&page_size={expected_count}"
+    )
+    mock_http_response.__exit__.assert_called_once()
+
+
+def test_blank_registration_definition(mock_http_request: MagicMock) -> None:
+    """Reject whitespace-only definitions before requesting AnyVar."""
+    with pytest.raises(ValueError, match="definition"):
+        AnyVarClient().register_variant(" ")
+
+    mock_http_request.assert_not_called()
+
+
+def test_blank_variant_identifier(mock_http_request: MagicMock) -> None:
+    with pytest.raises(ValueError, match="identifier"):
+        AnyVarClient().get_variant(" ")  # Whitespace is not an identifier.
+
+    mock_http_request.assert_not_called()
+
+
+@pytest.mark.parametrize("vrs_id", ["", " \t\n"])
+def test_blank_mapping_identifier(mock_http_request: MagicMock, vrs_id: str) -> None:
+    """Reject blank mapping identifiers through the shared path builder."""
+    with pytest.raises(ValueError, match="identifier"):
+        AnyVarClient().get_variant_mappings(vrs_id)
+
+    mock_http_request.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("accession", "start", "end", "page_size", "cursor", "error_message"),
+    [
+        (" ", 0, 10, 1000, None, "accession"),  # An accession cannot be blank.
+        ("NC_1", 0, 10, 1000, " ", "Cursor"),  # Use None when there is no cursor.
+        ("chromosome 10", 0, 10, 1000, None, "require GRCh37 or GRCh38"),
+    ],
+    ids=[
+        "blank-accession",
+        "blank-cursor",
+        "ambiguous-chromosome",
+    ],
+)
+def test_invalid_search_inputs(
+    mock_http_request: MagicMock,
+    accession: str,
+    start: int,
+    end: int,
+    page_size: int,
+    cursor: str | None,
+    error_message: str,
+) -> None:
+    """Reject blank accessions and cursors before requesting AnyVar."""
+    with pytest.raises(ValueError, match=error_message):
+        AnyVarClient().search_variants(
+            accession, start, end, page_size=page_size, cursor=cursor
+        )
+
+    mock_http_request.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        AnyVarOperation.REGISTER_VARIANT,
+        AnyVarOperation.GET_VARIANT_MAPPINGS,
+        AnyVarOperation.SEARCH_VARIANTS,
+    ],
+)
+def test_request_validation_delegated_to_anyvar(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    operation: AnyVarOperation,
+) -> None:
+    """Surface upstream validation failures for values the client forwards."""
+    mock_http_response.status_code = 422
+    mock_http_response.raise_for_status.side_effect = requests.HTTPError(
+        response=mock_http_response
+    )
+    client = AnyVarClient()
+    request = {
+        AnyVarOperation.REGISTER_VARIANT: partial(
+            client.register_variant, "variant", "GRCh36"
+        ),
+        AnyVarOperation.GET_VARIANT_MAPPINGS: partial(
+            client.get_variant_mappings, "id", "unknown"
+        ),
+        AnyVarOperation.SEARCH_VARIANTS: partial(
+            client.search_variants, "NC_1", 10, -1, page_size=10001
+        ),
+    }[operation]
+
+    with pytest.raises(AnyVarAPIError) as caught:
+        request()
+
+    assert caught.value.operation is operation
+    assert caught.value.status_code == 422
+    mock_http_request.assert_called_once()
+
+
+def test_http_error(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    mock_http_response.status_code = 404
+    mock_http_response.raise_for_status.side_effect = requests.HTTPError(
+        "secret-upstream-detail", response=mock_http_response
+    )
+
+    with pytest.raises(AnyVarAPIError) as caught:
+        AnyVarClient().get_variant("missing-id")
+
+    assert caught.value.operation is AnyVarOperation.GET_VARIANT
+    assert caught.value.status_code == 404
+    # Upstream errors may contain credentials or private data.
+    assert "secret-upstream-detail" not in "".join(format_exception(caught.value))
+    mock_http_response.__exit__.assert_called_once()
+    mock_http_request.assert_called_once()
+
+
+def test_redirect_is_rejected(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    """Reject upstream redirects before reading their response bodies."""
+
+    mock_http_response.is_redirect = True
+
+    with pytest.raises(AnyVarAPIError, match="was redirected"):
+        AnyVarClient().get_variant("id")
+
+    mock_http_response.iter_content.assert_not_called()
+    mock_http_request.assert_called_once()
+
+
+@pytest.mark.parametrize("error_type", [requests.ConnectionError, requests.Timeout])
+def test_connection_failure(
+    mock_http_request: MagicMock, error_type: type[Exception]
+) -> None:
+    mock_http_request.side_effect = error_type("connection failed")
+
+    with pytest.raises(AnyVarAPIError) as caught:
+        AnyVarClient().get_service_info()
+
+    assert caught.value.operation is AnyVarOperation.SERVICE_INFO
+    assert caught.value.status_code is None
+
+
+def test_response_read_timeout(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    # A connection can succeed and then time out while reading the body.
+    mock_http_response.iter_content.side_effect = requests.ReadTimeout("read timed out")
+
+    with pytest.raises(AnyVarAPIError):
+        AnyVarClient().get_service_info()
+
+    mock_http_response.__exit__.assert_called_once()
+    mock_http_request.assert_called_once()
+
+
+def test_invalid_json(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    mock_http_response.iter_content.side_effect = lambda _chunk_size: iter(
+        [b"not JSON"]
+    )
+
+    with pytest.raises(AnyVarAPIError, match="invalid JSON"):
+        AnyVarClient().get_service_info()
+
+    mock_http_response.__exit__.assert_called_once()
+    mock_http_request.assert_called_once()
+
+
+def test_response_size_limit(
+    mock_http_request: MagicMock, mock_http_response: MagicMock
+) -> None:
+    """Stop reading when streamed content exceeds the byte limit."""
+
+    mock_http_response.iter_content.side_effect = lambda _chunk_size: iter(
+        [b'{"name":"AnyVar",', b'"version":"1.0"}']
+    )
+
+    with pytest.raises(AnyVarAPIError, match="response exceeds the 20-byte limit"):
+        AnyVarClient(settings=Settings(anyvar_max_response_bytes=20)).get_service_info()
+
+    mock_http_response.__exit__.assert_called_once()
+    mock_http_request.assert_called_once()
+
+
+def test_search_span_limit(mock_http_request: MagicMock) -> None:
+    """Reject a search interval wider than the configured limit."""
+    client = AnyVarClient(settings=Settings(anyvar_max_search_span=10))
+
+    with pytest.raises(ValueError, match="10-position limit"):
+        client.search_variants("NC_1", 0, 10)
+
+    mock_http_request.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("operation", "payload"),
+    [
+        (AnyVarOperation.SEARCH_VARIANTS, []),  # The response must be a JSON object.
+        (AnyVarOperation.SEARCH_VARIANTS, {}),  # The variations field is required.
+        # Each variation must be an object. Keep private data out of validation errors.
+        (
+            AnyVarOperation.SEARCH_VARIANTS,
+            {"variations": [1], "private_note": "secret-upstream-payload"},
+        ),
+        (AnyVarOperation.REGISTER_VARIANT, {"messages": []}),  # Input is required.
+        (AnyVarOperation.GET_VARIANT, {"data": None, "messages": []}),  # No object.
+        (
+            AnyVarOperation.GET_VARIANT_MAPPINGS,
+            {"mappings": [{"mapping_type": "liftover_to"}]},  # Missing related IDs.
+        ),
+    ],
+    ids=[
+        "not-an-object",
+        "missing-variations",
+        "invalid-variation",
+        "missing-registration-input",
+        "null-object",
+        "missing-mapping-ids",
+    ],
+)
+def test_invalid_response(
+    mock_http_request: MagicMock,
+    mock_http_response: MagicMock,
+    operation: AnyVarOperation,
+    payload: object,
+) -> None:
+    mock_http_response.json.return_value = payload
+    client = AnyVarClient()
+    # Bind the operation and its arguments so pytest.raises contains only one call.
+    request = {
+        AnyVarOperation.REGISTER_VARIANT: partial(
+            client.register_variant, "NC_000010.11:g.87894077C>T"
+        ),
+        AnyVarOperation.GET_VARIANT: partial(client.get_variant, "ga4gh:VA.example"),
+        AnyVarOperation.GET_VARIANT_MAPPINGS: partial(
+            client.get_variant_mappings, "ga4gh:VA.example"
+        ),
+        AnyVarOperation.SEARCH_VARIANTS: partial(client.search_variants, "NC_1", 0, 10),
+    }[operation]
+
+    with pytest.raises(AnyVarAPIError) as caught:
+        request()
+
+    assert caught.value.operation is operation
+    assert caught.value.status_code is None
+    assert "secret-upstream-payload" not in "".join(format_exception(caught.value))
+    mock_http_response.__exit__.assert_called_once()
+    mock_http_request.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "localhost:8000",  # The service URL requires an HTTP or HTTPS scheme.
+        "https://",  # A scheme alone does not identify a host.
+        "https://user:pass@host",  # Credentials cannot be embedded in the URL.
+        "https://host/?q=1",  # A base URL cannot contain endpoint query parameters.
+    ],
+    ids=["missing-scheme", "missing-host", "credentials", "query-string"],
+)
+def test_invalid_url(base_url: str) -> None:
+    with pytest.raises(ValueError, match="URL"):
+        Settings(anyvar_api_url=base_url)
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [
+        0,  # The timeout must be positive.
+        float("inf"),  # A finite timeout prevents requests from waiting indefinitely.
+    ],
+)
+def test_invalid_timeout(timeout: float) -> None:
+    """Reject nonpositive or infinite explicit timeouts during configuration."""
+    with pytest.raises(ValueError, match=r"(?i)timeout"):
+        Settings(anyvar_api_timeout=timeout)
