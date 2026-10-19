@@ -4,9 +4,18 @@
         <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/</loc>
       </url>
       <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/configuration/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/connect/</loc>
+      </url>
+      <url>
         <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/contributing/</loc>
       </url>
       <url>
-        <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/getting-started/</loc>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/dependencies/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/latest/quickstart/</loc>
       </url>
 </urlset>

@@ -14,7 +14,7 @@
       
       
       
-        <link rel="next" href="./getting-started/">
+        <link rel="next" href="./quickstart/">
       
       
         
@@ -256,6 +256,23 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="" class="md-nav__link md-nav__link--active">
         
   
@@ -272,6 +289,48 @@
 
       </a>
       
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#who-is-this-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Who is this for?
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Get started
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -283,14 +342,92 @@
   
   
     <li class="md-nav__item">
-      <a href="./getting-started/" class="md-nav__link">
+      <a href="./quickstart/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-  Getting started
+  Quickstart
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./dependencies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Dependencies
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Connect your AI agent
 
     
   </span>
@@ -345,6 +482,11 @@
                       
                     
                     
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
                   
                   <div class="md-sidebar__inner">
                     
@@ -356,6 +498,36 @@
   
     
   
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#who-is-this-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Who is this for?
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Get started
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -376,10 +548,26 @@
 
 
 <h1 id="anyvar-mcp-server">AnyVar MCP Server<a class="headerlink" href="#anyvar-mcp-server" title="Permanent link">&para;</a></h1>
-<p>MCP server for <a href="https://github.com/biocommons/anyvar">AnyVar</a>.</p>
+<p><strong>Variation data for AI agents.</strong> This prototype connects an
+<a href="https://github.com/GenomicMedLab/anyvar">AnyVar</a> service to MCP-compatible
+hosts. Its tools let agents register supported variant nomenclature,
+retrieve <a href="https://vrs.ga4gh.org/en/stable/">GA4GH VRS</a> objects, search regions,
+and follow available mappings.</p>
+<h2 id="who-is-this-for">Who is this for?<a class="headerlink" href="#who-is-this-for" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="getting-started/">Getting started</a>: install the package, set up and verify AnyVar, and configure the MCP server.</li>
-<li><a href="contributing/">Contributing</a>: set up a development environment and contribute code or documentation.</li>
+<li><strong>Agent developers</strong> building research or variant-curation workflows in an
+  MCP-compatible host.</li>
+<li><strong>Researchers and curators</strong> who need answers tied to VRS identifiers and
+  AnyVar responses.</li>
+<li><strong>Teams running AnyVar</strong> that want to offer agent access through defined tools.</li>
+</ul>
+<h2 id="get-started">Get started<a class="headerlink" href="#get-started" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="quickstart/">Quickstart</a> walks through preparing AnyVar, installing the MCP package, connecting an AI agent, and using the tools.</li>
+<li><a href="dependencies/">Dependencies</a> covers starting and checking AnyVar.</li>
+<li><a href="configuration/">Configuration</a> lists the MCP server settings.</li>
+<li><a href="connect/">Connect your AI agent</a> to the MCP server.</li>
+<li><a href="contributing/">Contributing</a> explains development setup.</li>
 </ul>
 
 
