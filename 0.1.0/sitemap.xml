@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/0.1.0/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/0.1.0/configuration/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/0.1.0/connect/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/0.1.0/contributing/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/0.1.0/dependencies/</loc>
+      </url>
+      <url>
+        <loc>https://genomicmedlab.github.io/anyvar-mcp/0.1.0/quickstart/</loc>
+      </url>
+</urlset>
