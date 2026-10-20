@@ -16,7 +16,7 @@ running while you use the MCP tools. Note its base URL for the connection settin
 
 ## Install the MCP server
 
-Install from [PyPI](https://pypi.org/project/anyvar_mcp/):
+In a terminal, install from [PyPI](https://pypi.org/project/anyvar_mcp/):
 
 ```shell
 python3 -m pip install anyvar_mcp
@@ -24,18 +24,10 @@ python3 -m pip install anyvar_mcp
 
 ## Connect your AI agent
 
-Follow [Connect your AI agent](connect.md) with `ANYVAR_API_URL` set to your
+Follow [Connect your AI agent](connect.md) to configure your agent and verify
+the connection, with `ANYVAR_API_URL` set to your
 AnyVar service's base URL. Enable `ANYVAR_ENABLE_REGISTRATION=true` to run the
 registration example below. See [Configuration](configuration.md) for all settings.
-
-### Verify the connection
-
-With `anyvar-mcp` connected, check that your host shows its tools:
-
-- **Claude Desktop:** Open a new chat. The server's tools should be available
-  through **Add files, connectors, and more → Connectors**.
-- **Codex CLI:** Run `codex` and enter `/mcp`. You should see
-  `anyvar-mcp: connected (4 tools)`.
 
 ## Use the tools with your AI agent
 
