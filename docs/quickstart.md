@@ -38,7 +38,7 @@ results. Each example describes what to expect; the agent's wording may vary.
 
 ### See what tools are available
 
-> What tools are available for AnyVar?
+> What tools are available through the AnyVar MCP server?
 
 The response should list the available tools with a brief description of each.
 
@@ -53,7 +53,7 @@ expressions, VRS identifiers, and genomic region inputs.
 
 Send this request in the chat or Codex prompt:
 
-> Register `NC_000010.11:g.87894077C>T` and tell me about the response.
+> Use the AnyVar MCP to register `NC_000010.11:g.87894077C>T` and tell me about the response.
 
 !!! important "Registration writes to AnyVar"
 
