@@ -375,23 +375,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Connect your AI agent">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#verify-the-connection" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Verify the connection
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -671,23 +654,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Connect your AI agent">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#verify-the-connection" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Verify the connection
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -803,21 +769,14 @@ Your AI agent starts the MCP server when it connects.</p>
 <p>Start the <a href="../dependencies/#start-the-anyvar-http-api">AnyVar HTTP API</a> and keep it
 running while you use the MCP tools. Note its base URL for the connection settings below.</p>
 <h2 id="install-the-mcp-server">Install the MCP server<a class="headerlink" href="#install-the-mcp-server" title="Permanent link">&para;</a></h2>
-<p>Install from <a href="https://pypi.org/project/anyvar_mcp/">PyPI</a>:</p>
+<p>In a terminal, install from <a href="https://pypi.org/project/anyvar_mcp/">PyPI</a>:</p>
 <div class="language-shell highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>anyvar_mcp
 </span></code></pre></div>
 <h2 id="connect-your-ai-agent">Connect your AI agent<a class="headerlink" href="#connect-your-ai-agent" title="Permanent link">&para;</a></h2>
-<p>Follow <a href="../connect/">Connect your AI agent</a> with <code>ANYVAR_API_URL</code> set to your
+<p>Follow <a href="../connect/">Connect your AI agent</a> to configure your agent and verify
+the connection, with <code>ANYVAR_API_URL</code> set to your
 AnyVar service's base URL. Enable <code>ANYVAR_ENABLE_REGISTRATION=true</code> to run the
 registration example below. See <a href="../configuration/">Configuration</a> for all settings.</p>
-<h3 id="verify-the-connection">Verify the connection<a class="headerlink" href="#verify-the-connection" title="Permanent link">&para;</a></h3>
-<p>With <code>anyvar-mcp</code> connected, check that your host shows its tools:</p>
-<ul>
-<li><strong>Claude Desktop:</strong> Open a new chat. The server's tools should be available
-  through <strong>Add files, connectors, and more → Connectors</strong>.</li>
-<li><strong>Codex CLI:</strong> Run <code>codex</code> and enter <code>/mcp</code>. You should see
-  <code>anyvar-mcp: connected (4 tools)</code>.</li>
-</ul>
 <h2 id="use-the-tools-with-your-ai-agent">Use the tools with your AI agent<a class="headerlink" href="#use-the-tools-with-your-ai-agent" title="Permanent link">&para;</a></h2>
 <p>Send the prompts below to your connected AI agent to explore the tools,
 register a variant, retrieve its mappings, and search a genomic region. Follow
