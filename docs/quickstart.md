@@ -11,23 +11,26 @@ _Codex CLI using GPT-6-Luna at low reasoning effort_
 
 ## Prepare AnyVar
 
-Start the [AnyVar HTTP API](dependencies.md#start-the-anyvar-http-api) and keep it
-running while you use the MCP tools. Note its base URL for the connection settings below.
+The MCP server needs a running AnyVar HTTP API. If you already have one,
+keep it running and note its base URL. Otherwise, follow
+[AnyVar service setup](anyvar-service-setup.md#start-the-anyvar-http-api) first.
 
-## Install the MCP server
+## Choose a setup route
 
-In a terminal, install from [PyPI](https://pypi.org/project/anyvar_mcp/):
+Choose how to run the MCP server:
 
-```shell
-python3 -m pip install anyvar_mcp
-```
+- [Python setup](python-setup.md): Install with pip and run directly on your computer.
+- [Docker setup](docker.md): Run in a container with its dependencies bundled.
 
-## Connect your AI agent
+Both options provide the same tools.
 
-Follow [Connect your AI agent](connect.md) to configure your agent and verify
-the connection, with `ANYVAR_API_URL` set to your
-AnyVar service's base URL. Enable `ANYVAR_ENABLE_REGISTRATION=true` to run the
-registration example below. See [Configuration](configuration.md) for all settings.
+Each guide covers installation and agent connection for Claude Desktop and
+Codex CLI. Complete the connection check in your chosen guide, then return here
+to try the tools. Set `ANYVAR_API_URL` to your AnyVar service's base URL and
+enable `ANYVAR_ENABLE_REGISTRATION=true` to run the registration example below.
+
+[Configuration reference](configuration.md) lists optional overrides and defaults
+for both methods.
 
 ## Use the tools with your AI agent
 
@@ -38,7 +41,7 @@ results. Each example describes what to expect; the agent's wording may vary.
 
 ### See what tools are available
 
-> What tools are available through the AnyVar MCP server?
+> What tools are available for AnyVar?
 
 The response should list the available tools with a brief description of each.
 
@@ -53,7 +56,7 @@ expressions, VRS identifiers, and genomic region inputs.
 
 Send this request in the chat or Codex prompt:
 
-> Use the AnyVar MCP to register `NC_000010.11:g.87894077C>T` and tell me about the response.
+> Register `NC_000010.11:g.87894077C>T` and tell me about the response.
 
 !!! important "Registration writes to AnyVar"
 

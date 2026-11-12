@@ -1,17 +1,47 @@
-# Connect your AI agent
+# Python setup
+
+Use Python 3.13 or later to install the MCP server and connect Claude Desktop or
+Codex CLI. Keep your [AnyVar HTTP API](anyvar-service-setup.md) running while you use the tools.
 
 ## Prerequisites
 
-First, install the AI client you want to use: [Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop) or [Codex CLI](https://learn.chatgpt.com/docs/codex/cli#getting-started).
+Install the AI client you want to use:
+[Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop)
+or [Codex CLI](https://learn.chatgpt.com/docs/codex/cli#getting-started).
 
-Then [install `anyvar-mcp`](quickstart.md#install-the-mcp-server) and start the
-[AnyVar HTTP API](dependencies.md). Keep the API running while you use the tools.
-The client starts `anyvar-mcp` using the command you configure below.
+## Install the MCP server
 
-Set the environment variables in the examples to your values if you want to
-override the defaults. See the [configuration guide](configuration.md).
+In a terminal, install from [PyPI](https://pypi.org/project/anyvar_mcp/):
 
-## Claude Desktop
+```shell
+python3 -m pip install anyvar_mcp
+```
+
+## Find the server command
+
+Find the executable:
+
+```shell
+command -v anyvar-mcp
+```
+
+If nothing prints, activate the virtual environment where you installed the
+server and try again. Save the printed path. Use it as the command if your
+agent cannot find `anyvar-mcp`. For a virtual environment, it might look like:
+
+```text
+/home/git/anyvar-mcp/.venv/bin/anyvar-mcp
+```
+
+## Connect your AI agent
+
+Replace `ANYVAR_API_URL` with your service's URL. The examples enable writes to
+AnyVar; omit `ANYVAR_ENABLE_REGISTRATION` to disable them. See the
+[configuration reference](configuration.md) for other settings.
+
+Choose your client below.
+
+### Claude Desktop
 
 1. Open **Settings → Developer → Edit Config** to find
    `claude_desktop_config.json`.
@@ -31,19 +61,15 @@ override the defaults. See the [configuration guide](configuration.md).
    }
    ```
 
+   If Claude Desktop cannot find the command, replace the `command` value with
+   the full executable path.
+
 3. Save the file, fully quit Claude Desktop, and reopen it.
 
 See the [Claude Desktop MCP documentation](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
 for more setup options and troubleshooting.
 
-### Verify the connection
-
-Open a new chat. The server's tools should be available through
-**Add files, connectors, and more → Connectors**.
-
-If you're having issues, see [Troubleshooting](#troubleshooting).
-
-## Codex CLI
+### Codex CLI
 
 In a terminal, add the MCP server with `ANYVAR_API_URL` set to
 `http://localhost:8000` and `ANYVAR_ENABLE_REGISTRATION` set to `true`:
@@ -62,21 +88,9 @@ See the [Codex MCP documentation](https://developers.openai.com/codex/mcp/)
 and [CLI reference](https://developers.openai.com/codex/cli/reference/)
 for more configuration options and commands.
 
-### Verify the connection
+#### Change saved settings
 
-Start Codex from a terminal:
-
-```shell
-codex
-```
-
-In Codex, enter `/mcp`. You should see `anyvar-mcp: connected (4 tools)`.
-
-If you're having issues, see [Troubleshooting](#troubleshooting).
-
-### Change saved settings
-
-#### Config file
+##### Config file
 
 Edit the server's environment variables in `~/.codex/config.toml`:
 
@@ -86,7 +100,7 @@ ANYVAR_API_URL = "http://localhost:8000"
 ANYVAR_ENABLE_REGISTRATION = "true"
 ```
 
-#### CLI
+##### CLI
 
 In a terminal, inspect the current entry, remove it, and add it again with
 all settings you want to keep. For example, to change the API URL and disable
@@ -98,7 +112,16 @@ codex mcp remove anyvar-mcp
 codex mcp add anyvar-mcp --env ANYVAR_API_URL=http://localhost:9000 --env ANYVAR_ENABLE_REGISTRATION=false -- anyvar-mcp
 ```
 
-## Check tools from the terminal
+## Check the connection
+
+- **Claude Desktop:** In a new chat, open **Add files, connectors, and more →
+  Connectors → Manage connectors** and select `anyvar-mcp`.
+- **Codex CLI:** Run `codex` in a terminal to start a new session, then enter
+  `/mcp`. You should see `anyvar-mcp: connected (4 tools)`.
+
+If you're having issues, see [Troubleshooting](#troubleshooting).
+
+### Optional: check tools from the terminal
 
 With Node.js and `npx` installed, you can use the
 [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) to list
@@ -108,13 +131,18 @@ tools independently of your agent:
 npx @modelcontextprotocol/inspector --cli anyvar-mcp --method tools/list
 ```
 
-Once connected, [try the tools](quickstart.md#use-the-tools-with-your-ai-agent).
+The Inspector checks tool discovery; it does not check API connectivity.
+
+## Use the tools
+
+Follow [Use the tools with your AI agent](quickstart.md#use-the-tools-with-your-ai-agent)
+in the Quickstart to try the AnyVar tools.
 
 ## Troubleshooting
 
 ### AnyVar HTTP API is unavailable
 
-Make sure the [AnyVar HTTP API](dependencies.md#start-the-anyvar-http-api) is
+Make sure the [AnyVar HTTP API](anyvar-service-setup.md#start-the-anyvar-http-api) is
 running and keep it running while you use the tools. In your agent's MCP
 configuration, set `ANYVAR_API_URL` to that instance's base URL, including the
 correct host and port. For example, `http://localhost:8000` works only if the API

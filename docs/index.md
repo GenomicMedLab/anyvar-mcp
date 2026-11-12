@@ -15,9 +15,9 @@ and follow available mappings.
 - **Teams running AnyVar** that want to offer agent access through defined tools.
 
 ## Get started
-
-- [Quickstart](quickstart.md) walks through preparing AnyVar, installing the MCP package, connecting an AI agent, and using the tools.
-- [Dependencies](dependencies.md) covers starting and checking AnyVar.
-- [Configuration](configuration.md) lists the MCP server settings.
-- [Connect your AI agent](connect.md) to the MCP server.
-- [Contributing](contributing.md) explains development setup.
+- [Quickstart](quickstart.md): Try the AnyVar tools.
+- [AnyVar service setup](anyvar-service-setup.md): Start or check your AnyVar API.
+- [Python setup](python-setup.md): Install with pip and connect your agent.
+- [Docker setup](docker.md): Run a container and connect your agent.
+- [Configuration reference](configuration.md): Check settings and defaults.
+- [Contributing](contributing.md): Develop, test, and publish the project.
