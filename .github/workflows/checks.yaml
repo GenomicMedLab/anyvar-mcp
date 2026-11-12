@@ -26,6 +26,26 @@ jobs:
       - name: Run tests
         run: uv run pytest -m "not live"
 
+  docker:
+    name: Docker build and smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Build container
+        run: docker build --pull --tag anyvar-mcp:local .
+      - name: Install test dependencies
+        run: uv sync --extra tests
+      - name: Test container
+        env:
+          ANYVAR_MCP_TEST_IMAGE: anyvar-mcp:local
+        run: uv run pytest tests/integration/test_docker.py --no-cov
+
   docs:
     name: documentation build
     runs-on: ubuntu-latest

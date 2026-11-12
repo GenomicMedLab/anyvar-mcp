@@ -1,0 +1,16 @@
+name: anyvar-mcp
+title: AnyVar MCP
+type: server
+image: ghcr.io/genomicmedlab/anyvar-mcp:latest
+env:
+  - name: ANYVAR_API_URL
+    value: "{{anyvar-mcp.api_url}}"
+config:
+  - name: anyvar-mcp
+    description: AnyVar HTTP API connection.
+    type: object
+    required: [api_url]
+    properties:
+      api_url:
+        type: string
+        description: AnyVar HTTP API base URL reachable from the container.

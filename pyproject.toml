@@ -51,7 +51,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report term-missing"
 testpaths = ["tests"]
-markers = ["live: tests requiring a running AnyVar service or external resources"]
+markers = [
+  "live: tests requiring a running AnyVar service or external resources",
+  "docker: tests requiring a built image and access to the Docker daemon",
+]
 
 [tool.coverage.run]
 branch = true

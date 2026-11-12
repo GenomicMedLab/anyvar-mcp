@@ -1,4 +1,8 @@
-# Dependencies
+# AnyVar service setup
+
+Both Python and Docker installations of the MCP server connect to a separately
+running AnyVar HTTP API. If you already have an API URL, you can skip this page
+and continue with your chosen [Quickstart setup route](quickstart.md#choose-a-setup-route).
 
 ## Start the AnyVar HTTP API
 

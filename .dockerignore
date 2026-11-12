@@ -1,0 +1,12 @@
+*
+!Dockerfile
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!src/anyvar_mcp/
+!src/anyvar_mcp/**
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*

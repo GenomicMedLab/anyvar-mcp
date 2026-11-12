@@ -1,7 +1,9 @@
-# Configuration
+# Configuration reference
 
-Set these values through environment variables or a `.env` file. Environment
-variables take precedence. Omitted settings use the defaults below.
+These settings apply to Python and Docker installations. Follow
+[Quickstart](quickstart.md) for setup.
+
+Omitted settings use the defaults below.
 
 ## AnyVar HTTP Service connection
 
@@ -50,10 +52,22 @@ A request must fit within both rolling windows.
 
 ## Set configuration values
 
-For Claude Desktop or Codex CLI, set environment variables in the agent's MCP
-configuration as shown in [Connect your AI agent](connect.md).
+Set values through environment variables or a `.env` file. Environment variables
+take precedence.
 
-If you use a `.env` file, place it in the MCP server process's working directory:
+Choose the instructions for your setup:
+
+- [Python](python-setup.md): Set environment variables in your agent's MCP configuration.
+- [Direct Docker](docker.md#configure-the-container): Pass `-e` arguments or an
+  `--env-file` to `docker run`.
+- [MCP Toolkit](docker.md#configure-the-server): Set `env` entries in the server
+  definition, then [import changes](docker.md#change-toolkit-settings).
+
+Restart the client connection after changing settings.
+
+### Example settings
+
+Use these values in a `.env` file or set them as environment variables.
 
 ```dotenv
 ANYVAR_API_URL=http://localhost:8000
